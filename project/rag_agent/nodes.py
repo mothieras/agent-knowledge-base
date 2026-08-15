@@ -137,8 +137,17 @@ def rewrite_query(state: State, llm):
         original_query = current_query
 
     context_section = "\n\n".join(context_parts)
-    llm_with_structure = llm.with_structured_output(QueryAnalysis)
-    response = llm_with_structure.invoke([SystemMessage(content=get_rewrite_query_prompt()), HumanMessage(content=context_section)])
+    # DeepSeek 适配：不支持 json_schema 的 response_format，改用 json_object 模式 + 客户端解析。
+    # json_object 模式要求 prompt 中出现 "json" 字样，故显式追加输出格式说明。
+    llm_with_structure = llm.with_structured_output(QueryAnalysis, method="json_mode")
+    response = llm_with_structure.invoke([
+        SystemMessage(content=(
+            get_rewrite_query_prompt()
+            + "\n\nRespond with a single JSON object containing exactly these keys: "
+            '"is_clear" (boolean), "questions" (array of strings), "clarification_needed" (string).'
+        )),
+        HumanMessage(content=context_section),
+    ])
     clarification_message_update = (
         [_name_internal_message(last_message, "clarification_response")]
         if pending_query else []

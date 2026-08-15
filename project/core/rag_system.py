@@ -1,5 +1,5 @@
 import uuid
-from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 import config
 from db.vector_db_manager import VectorDbManager
 from db.parent_store_manager import ParentStoreManager
@@ -24,10 +24,11 @@ class RAGSystem:
         self.vector_db.create_collection(self.collection_name)
         collection = self.vector_db.get_collection(self.collection_name)
 
-        llm = ChatOllama(
+        llm = ChatOpenAI(
             model=config.LLM_MODEL,
+            base_url=config.LLM_BASE_URL,
+            api_key=config.LLM_API_KEY,
             temperature=config.LLM_TEMPERATURE,
-            seed=config.LLM_SEED,
         )
         tools = ToolFactory(collection).create_tools()
         self.agent_graph = create_agent_graph(llm, tools)

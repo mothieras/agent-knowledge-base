@@ -14,10 +14,11 @@ SPARSE_VECTOR_NAME = "sparse"
 # --- Model Configuration ---
 DENSE_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 SPARSE_MODEL = "Qdrant/bm25"
-LLM_MODEL = "granite4.1:8b"
-JUDGE_MODEL = "ministral-3:3b-instruct-2512-q8_0"
+LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-chat")
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.deepseek.com")
+LLM_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+JUDGE_MODEL = os.environ.get("JUDGE_MODEL", "deepseek-chat")
 LLM_TEMPERATURE = 0
-LLM_SEED = 42
 
 # --- Retrieval Configuration ---
 RETRIEVAL_SCORE_THRESHOLD = 0.4

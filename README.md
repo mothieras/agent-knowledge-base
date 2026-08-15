@@ -1,3 +1,20 @@
+> # Agentic-RAG（本仓库）
+>
+> 本仓库基于 [GiovanniPasq/agentic-rag-for-dummies](https://github.com/GiovanniPasq/agentic-rag-for-dummies)（MIT）二次开发，项目名 **Agentic-RAG**。
+>
+> **定位**：中文求职知识库 Agentic RAG 服务——围绕中文技术面试场景，在开源教学型 Agentic RAG 底座上完成业务数据治理、中文混合检索（jieba BM25 + dense + RRF）、rerank、引用溯源、拒答、RAGAS 评测与 badcase 分析。重点不是从零造框架，而是模拟真实业务落地：基于成熟框架做模型替换、检索调优、数据治理、评测和服务化。
+>
+> **已完成的二次开发改动**（2026-08）：
+> - LLM 供应商从硬编码 Ollama 改为 OpenAI 兼容层，默认 DeepSeek（`config.py` 环境变量驱动）
+> - `rewrite_query` 结构化输出适配 DeepSeek（`json_mode`，DeepSeek 不支持 `json_schema` response_format）
+> - 开发环境约定：模型下载走官方 huggingface.co + 本机 SOCKS 代理
+>
+> **路线**：中文语料与数据治理 → 检索增强（embedding ablation / jieba BM25 / RRF / rerank）→ golden set 与评测闭环 → 拒答与路由 → 服务化。
+>
+> 上游项目文档见下文。
+
+---
+
 <p align="center">
   <img alt="Agentic RAG for Dummies Logo" src="assets/logo.png" width="350px">
 </p>
