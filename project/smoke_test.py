@@ -18,7 +18,7 @@ from langchain_core.messages import HumanMessage
 from core.rag_system import RAGSystem
 from core.document_manager import DocumentManager
 
-TEST_DOC = "/Users/luncer/findjob/八股笔记/Redis-缓存三连.md"
+TEST_DOC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "raw", "Redis-缓存三连.md")
 QUESTION = "缓存穿透是什么？怎么解决？"
 
 rs = RAGSystem()
