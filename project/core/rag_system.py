@@ -10,8 +10,9 @@ from core.observability import Observability
 
 class RAGSystem:
 
-    def __init__(self, collection_name=config.CHILD_COLLECTION):
+    def __init__(self, collection_name=config.CHILD_COLLECTION, record_retrieval=None):
         self.collection_name = collection_name
+        self.record_retrieval = record_retrieval
         self.vector_db = VectorDbManager()
         self.parent_store = ParentStoreManager()
         self.chunker = DocumentChunker()
@@ -30,7 +31,7 @@ class RAGSystem:
             api_key=config.LLM_API_KEY,
             temperature=config.LLM_TEMPERATURE,
         )
-        tools = ToolFactory(collection).create_tools()
+        tools = ToolFactory(collection, record_retrieval=self.record_retrieval).create_tools()
         self.agent_graph = create_agent_graph(llm, tools)
 
     def get_config(self):

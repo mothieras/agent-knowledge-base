@@ -1,6 +1,8 @@
 fastembed==0.8.0
 gradio==6.20.0
 ipykernel==7.3.0
+# ragas 0.4.3 imports langchain_community.chat_models.vertexai + langchain_community.llms.VertexAI; 0.4.x removed them, so pin 0.3.x — do not upgrade
+langchain-community==0.3.31
 langchain-huggingface==1.2.2
 langchain-ollama==1.1.0
 langchain-qdrant==1.1.0

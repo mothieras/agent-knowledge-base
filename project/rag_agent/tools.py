@@ -5,9 +5,10 @@ from core.execution_logger import log_error, log_tool_end, log_tool_start
 
 class ToolFactory:
     
-    def __init__(self, collection):
+    def __init__(self, collection, record_retrieval=None):
         self.collection = collection
         self.parent_store_manager = ParentStoreManager()
+        self.record_retrieval = record_retrieval
     
     def _search_child_chunks(self, query: str, limit: int = config.DEFAULT_RETRIEVAL_K) -> str:
         """Search document excerpts for evidence related to the user question.
@@ -28,6 +29,9 @@ class ToolFactory:
                 k=limit,
                 score_threshold=config.RETRIEVAL_SCORE_THRESHOLD,
             )
+            if self.record_retrieval:
+                self.record_retrieval(results)
+
             if not results:
                 output = "NO_RELEVANT_CHUNKS"
                 log_tool_end("search_child_chunks", output)
