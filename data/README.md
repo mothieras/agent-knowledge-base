@@ -40,3 +40,13 @@ data/
 ```
 
 topic 枚举：`java_backend` / `agent_runtime` / `rag` / `project_story` / `interview_strategy`
+
+## 本轮新增字段与枚举
+
+- `local_rel`：来源文件在 `findjob/` 下的相对路径，供 `data/sync_sources.py` 收料定位（不含本机绝对路径）。
+- `processing` 枚举扩展：`copied | rewritten | questions_only | code_wrapped`（`code_wrapped` = 代码文件包装为 markdown 代码块入库）。
+- `doc_type` 枚举扩展：`code_file`（与 `code_wrapped` 配对）。
+
+## 隐私排除原则
+
+个人隐私文档（简历、投递记录、面试准备话术）**不入库**：不进 data/、不登记 manifest。

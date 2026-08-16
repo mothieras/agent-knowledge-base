@@ -10,7 +10,7 @@ class DocumentManager:
         self.markdown_dir = Path(config.MARKDOWN_DIR)
         self.markdown_dir.mkdir(parents=True, exist_ok=True)
         
-    def add_documents(self, document_paths, progress_callback=None):
+    def add_documents(self, document_paths, progress_callback=None, source_names=None):
         if not document_paths:
             return 0, 0
             
@@ -28,7 +28,10 @@ class DocumentManager:
                 progress_callback((i + 1) / len(document_paths), f"Processing {Path(doc_path).name}")
                 
             source_path = Path(doc_path)
-            doc_name = source_path.stem
+            source_name = source_names.get(doc_path) if source_names else None
+            # source_name 提供时用 slug 做扁平文件名，避免同 stem 冲突
+            # (语料有 3 篇 README.md、2 篇 pom.xml；现有按 stem 命名会互相跳过)
+            doc_name = source_name.replace("/", "__") if source_name else source_path.stem
             md_path = self.markdown_dir / f"{doc_name}.md"
             
             if md_path.exists():
@@ -43,7 +46,7 @@ class DocumentManager:
                     pdfs_to_markdowns(str(source_path), overwrite=False)
                 parent_chunks, child_chunks = self.rag_system.chunker.create_chunks_single(
                     md_path,
-                    source_name=source_path.name,
+                    source_name=source_name or source_path.name,
                 )
                 
                 if not child_chunks:
