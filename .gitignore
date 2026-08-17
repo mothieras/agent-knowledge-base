@@ -8,7 +8,7 @@ venv/
 qdrant_db/
 markdown_docs/
 parent_store/
-docs/
+/docs/
 .superpowers/
 
 notebooks/output.csv
