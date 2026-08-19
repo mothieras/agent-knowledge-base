@@ -11,6 +11,7 @@ parent_store/
 /docs/
 .superpowers/
 .commandcode/
+AGENTS.md
 
 notebooks/output.csv
 
