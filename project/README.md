@@ -1,5 +1,9 @@
 # Agentic RAG System Documentation
 
+> **⚠️ 本文件为上游教学档，不再维护。本 fork 实际状态（DeepSeek LLM + FastAPI/SSE 服务化 + RAGAS 评测）见根 [`README.md`](../README.md) 的「服务化（FastAPI + SSE）」章节。**
+
+> 以下内容源自上游 `agentic-rag-for-dummies` 教程，可能与本 fork 不符（如 Ollama-first、`chat_interface.py`）。
+
 An **Agentic Retrieval-Augmented Generation (RAG)** system built with **LangGraph**, featuring **parent–child chunking**, **hybrid dense + sparse retrieval**, and a local Ollama-first setup that can be adapted to other LLM providers.
 
 
@@ -29,20 +33,12 @@ uv pip install -r requirements.txt
 
 ### Running the Application
 
-Start the Gradio interface locally:
-
-```bash
-python project/app.py
-```
-
-The application will be available at `http://localhost:7860` (default Gradio port).
-
-> This in-memory demo is intended for one local user. Deployments serving multiple users should assign a separate LangGraph thread ID per session.
+> ⚠️ 本节为上游 Ollama/Gradio-only 用法，已废弃。本 fork 以 FastAPI 服务为主、Gradio 为 API 客户端。完整步骤见根 [`README.md`](../README.md) 的「服务化」章节（`uvicorn api.main:app` + `API_URL=... python app.py`，或 Docker Compose）。
 
 ### Prerequisites
 
 - Python 3.11+
-- Ollama (local) or API keys for OpenAI, Anthropic, or Google
+- DeepSeek API key（见 `project/.env`）；上游的 Ollama 用法已不适用
 
 ---
 
@@ -76,7 +72,7 @@ PDF → Markdown Conversion → Parent/Child Chunking → Vector Indexing → Ag
 | `project/config.py` | **Central configuration hub** - edit this for provider/model/chunking changes |
 | `project/utils.py` | PDF conversion and cached context-token estimation with an offline-safe fallback |
 | `project/document_chunker.py` | Parent/child splitting logic with cleaning and merging rules |
-| `project/Dockerfile` | Dockerfile with Ollama for local deployment |
+| `project/Dockerfile` | Dockerfile（python:3.13-slim + uvicorn；Ollama 已移除），见 `docker-compose.yml` |
 
 ### Core System
 
@@ -84,7 +80,6 @@ PDF → Markdown Conversion → Parent/Child Chunking → Vector Indexing → Ag
 |------|---------|
 | `project/core/rag_system.py` | System bootstrap - creates managers and compiles LangGraph agent |
 | `project/core/document_manager.py` | Document ingestion pipeline (convert, chunk, index) |
-| `project/core/chat_interface.py` | Streams the aggregated answer while separating query analysis and tool activity from internal node output |
 | `project/core/observability.py` | Optional Langfuse tracing — callback handler lifecycle |
 
 ### Database Layer

@@ -8,10 +8,52 @@
 > - LLM 供应商从硬编码 Ollama 改为 OpenAI 兼容层，默认 DeepSeek（`config.py` 环境变量驱动）
 > - `rewrite_query` 结构化输出适配 DeepSeek（`json_mode`，DeepSeek 不支持 `json_schema` response_format）
 > - 开发环境约定：模型下载走官方 huggingface.co + 本机 SOCKS 代理
+> - 服务化：FastAPI + SSE 流式（token/消息双层），Gradio 改为 API 客户端（服务/UI 分离）；checkpointer 可注入（PostgresSaver 接缝已留）；Docker Compose（api + gradio + ingest）；pytest 12 项
 >
-> **路线**：中文语料与数据治理 → 检索增强（embedding ablation / jieba BM25 / RRF / rerank）→ golden set 与评测闭环 → 拒答与路由 → 服务化。
+> **路线**：中文语料与数据治理 → 检索增强（embedding ablation / jieba BM25 / RRF / rerank）→ golden set 与评测闭环 → 拒答与路由 → ~~服务化~~（已完成）。
+>
+> **下一步**：检索调优三部曲（jieba BM25 → 自定义 RRF → bge-reranker，每步用 eval 量化改善）；显式拒答路由（当前 refusal_recall 0.75）；版本/过期过滤；PostgresSaver 持久会话 + `/threads`。
 >
 > 上游项目文档见下文。
+
+> ## 服务化（FastAPI + SSE）
+>
+> 在 LangGraph agent 之上加一层 FastAPI 服务，Gradio 作为 API 客户端（服务/UI 分离）。RAG 核心、评测、语料治理不动。借 [agent-service-toolkit](https://github.com/JoshuaC215/agent-service-toolkit) 的服务外壳模式，**不 fork**。
+>
+> **分层与演进接缝**（上层只依赖下层稳定接口）：
+> ```
+> L4  client/ + ui/         HTTP/SSE 客户端 + Gradio 薄映射（事件→卡片）
+> L3  api/                  FastAPI 服务层（lifespan / 端点 / SSE 发射）—— 稳定薄前
+> L2  core/rag_system.py    bootstrap + checkpointer 持有者 + get_config
+> L1  rag_agent/           graph 编译 / nodes / edges / tools —— agent 编排
+> L0  db/ + 检索层          vector_db / parent_store —— 检索策略演进处
+> ```
+> 检索调优（jieba/RRF/rerank）、拒答路由、版本过滤落在 L0/L1，服务层不感知。`create_agent_graph(llm, tools, checkpointer)` 可注入，将来换 PostgresSaver 不动图编译。
+>
+> **端点**：`GET /health`（ready / starting）· `GET /info` · `POST /invoke` · `POST /stream`（SSE）· `GET /history?thread_id=`
+>
+> **SSE 事件**：`answer_token` · `tool_call` · `tool_result` · `system_status` · `clarification` · `done`（带 `answer`/`sources`/`contexts`/`interrupted`）· `error`
+>
+> **本地运行**：
+> ```bash
+> # 1. 配置 project/.env（DEEPSEEK_API_KEY 等），见 project/.env.example
+> # 2. 入库语料（manifest 驱动）
+> cd project && python ingest_corpus.py
+> # 3. 起 API 服务
+> uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+> # 4. 起 Gradio（走 API 客户端）
+> API_URL=http://localhost:8000 python app.py
+> ```
+>
+> **Docker**：
+> ```bash
+> docker compose --profile ingest run --rm ingest   # 首次入库（拉 HF embedding 到 hf-cache 卷）
+> docker compose up                                   # api :8000 + gradio :7860
+> ```
+>
+> **测试**：`pytest tests/`（schema + api + graph，12 项；RAGSystem 经 `dependency_overrides` 打桩，无需真实 LLM/Qdrant）
+>
+> **安全边界**：本地演示用，无 auth / 无 TLS / 无限流；InMemorySaver 会话不跨重启持久化（PostgresSaver 接缝已留）。生产暴露前需独立威胁建模。
 
 ---
 

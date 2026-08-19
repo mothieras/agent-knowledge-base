@@ -1,5 +1,6 @@
 import uuid
 from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.memory import InMemorySaver
 import config
 from db.vector_db_manager import VectorDbManager
 from db.parent_store_manager import ParentStoreManager
@@ -17,6 +18,7 @@ class RAGSystem:
         self.parent_store = ParentStoreManager()
         self.chunker = DocumentChunker()
         self.observability = Observability()
+        self.checkpointer = InMemorySaver()
         self.agent_graph = None
         self.thread_id = str(uuid.uuid4())
         self.recursion_limit = config.GRAPH_RECURSION_LIMIT
@@ -32,10 +34,12 @@ class RAGSystem:
             temperature=config.LLM_TEMPERATURE,
         )
         tools = ToolFactory(collection, record_retrieval=self.record_retrieval).create_tools()
-        self.agent_graph = create_agent_graph(llm, tools)
+        self.agent_graph = create_agent_graph(llm, tools, self.checkpointer)
 
-    def get_config(self):
-        cfg = {"configurable": {"thread_id": self.thread_id}, "recursion_limit": self.recursion_limit}
+    def get_config(self, thread_id=None, **configurable):
+        configurable_fields = {"thread_id": thread_id or self.thread_id}
+        configurable_fields.update(configurable)
+        cfg = {"configurable": configurable_fields, "recursion_limit": self.recursion_limit}
         handler = self.observability.get_handler()
         if handler:
             cfg["callbacks"] = [handler]

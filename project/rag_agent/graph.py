@@ -18,11 +18,11 @@ from .nodes import (
 )
 from .edges import route_after_orchestrator_call, route_after_rewrite
 
-def create_agent_graph(llm, tools_list):
+def create_agent_graph(llm, tools_list, checkpointer=None):
     llm_with_tools = llm.bind_tools(tools_list)
     tool_node = ToolNode(tools_list)
 
-    checkpointer = InMemorySaver()
+    checkpointer = checkpointer or InMemorySaver()
 
     print("Compiling agent graph...")
     agent_builder = StateGraph(AgentState)

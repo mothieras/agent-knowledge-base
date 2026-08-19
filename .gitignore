@@ -10,6 +10,7 @@ markdown_docs/
 parent_store/
 /docs/
 .superpowers/
+.commandcode/
 
 notebooks/output.csv
 
