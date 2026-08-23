@@ -68,3 +68,7 @@ class VectorDbManager:
                 )
         except Exception as e:
             raise RuntimeError(f"Unable to initialize Qdrant collection '{collection_name}'.") from e
+
+    def count_points(self, collection_name) -> int:
+        info = self.__client.get_collection(collection_name)
+        return info.points_count

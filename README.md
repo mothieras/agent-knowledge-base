@@ -1,11 +1,12 @@
-# Agentic-RAG：中文技术面试知识库服务
+# Agentic-RAG：中文 RAG 技术知识库服务
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)](https://github.com/langchain-ai/langgraph)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Code License: MIT](https://img.shields.io/badge/code-MIT-blue.svg)](LICENSE)
+[![Corpus License: CC BY-NC-SA 4.0](https://img.shields.io/badge/corpus-CC%20BY--NC--SA%204.0-lightgrey.svg)](data/THIRD_PARTY_NOTICES.md)
 
-面向中文技术面试场景的 Agentic RAG 工程化实验：在开源 LangGraph 教学底座上，加入领域语料治理、DeepSeek 适配、可复现评测和 FastAPI/SSE 服务层。
+面向中文 RAG 学习与技术问答场景的 Agentic RAG 工程化实验：在开源 LangGraph 教学底座上，加入公开语料治理、DeepSeek 适配、可复现评测和 FastAPI/SSE 服务层。
 
 > **状态：活跃原型。** 适合学习、评测和本地演示；当前没有认证、限流、TLS 或持久会话，不能直接暴露到公网。
 
@@ -16,7 +17,7 @@
 目前已交付的增量集中在四条线上：
 
 - **模型适配**：运行时改为 OpenAI-compatible `ChatOpenAI`，默认接入 DeepSeek；查询改写使用 DeepSeek 支持的 JSON mode。
-- **语料治理**：用 manifest 管理中文 Java、Agent Runtime、RAG 与项目叙事语料，记录来源、许可、版本和处理方式，并排除隐私文档。
+- **语料治理**：用 manifest 管理固定版本的公开中文 RAG 教程，记录逐文件来源、许可与 SHA-256，并在同步时清除清单外残留。
 - **评测闭环**：维护 30 条、6 类题型的 golden set，记录检索、生成、拒答/澄清、延迟、token 与成本指标。
 - **服务化**：增加 FastAPI 同步调用与 SSE 流式协议；Gradio 只作为 API 客户端，不再直接持有 RAG 运行时。
 
@@ -27,13 +28,14 @@
 - **原作者**：[Giovanni Pasqualino](https://github.com/GiovanniPasq)
 - **上游许可**：MIT；原始版权声明保留在 [`LICENSE`](LICENSE)
 - **上游教学文档**：[`project/README.md`](project/README.md) 与 [`notebooks/`](notebooks/)；其中部分 Ollama-first 用法不代表本 fork 的当前运行方式
+- **当前检索语料**：来自 [`mothieras/all-in-rag`](https://github.com/mothieras/all-in-rag) 固定修订版，遵循 CC BY-NC-SA 4.0，不适用本仓库代码的 MIT License；详见 [`data/THIRD_PARTY_NOTICES.md`](data/THIRD_PARTY_NOTICES.md)
 
 下表明确区分继承能力与本 fork 的工作：
 
 | 领域 | 上游底座 | 本 fork 的增量 |
 |---|---|---|
 | Agent 编排 | LangGraph 主图/子图、查询改写、HITL 澄清、并行子问题、上下文压缩 | DeepSeek JSON mode 适配；checkpointer 作为可注入依赖；服务层按 `thread_id` 隔离请求 |
-| 检索 | 父子分块、Qdrant dense + sparse hybrid retrieval、文件型 parent store | 中文领域语料、manifest 收料与入库、来源 metadata、检索 recorder 与分维度评测 |
+| 检索 | 父子分块、Qdrant dense + sparse hybrid retrieval、文件型 parent store | 公开中文 RAG 语料、固定 revision 与哈希校验、来源 metadata、检索 recorder 与分维度评测 |
 | 应用入口 | Gradio 教学应用 | FastAPI `/invoke`、`/stream`、`/history`；独立 HTTP/SSE client；Gradio 改为薄客户端 |
 | 评测 | 通用 evaluation notebook | 30 条领域 golden set、自动评测 runner、基线报告与 badcase 信号 |
 | 可运行性 | 本地教学项目 | 环境变量驱动的 DeepSeek 配置、smoke script、API/schema/graph 测试 |
@@ -52,15 +54,17 @@
 
 ### 语料治理
 
-[`data/manifest.json`](data/manifest.json) 是入库清单，当前覆盖五类 topic：
+[`data/manifest.json`](data/manifest.json) 是入库清单，当前从 `all-in-rag` 选取 14 篇中文 Markdown，覆盖七类 topic：
 
-- Java 后端知识与代码
-- Agent Runtime 设计与实现
-- RAG 项目调研
-- 项目设计和演进记录
-- 排除个人隐私后的通用面试策略
+- RAG 基础
+- 数据加载与文本分块
+- Embedding、向量数据库与索引优化
+- 混合检索、查询构建/改写与重排压缩
+- 格式化生成与 Function Calling
+- RAG 评估方法与工具
+- 知识图谱增强 RAG
 
-每条语料记录来源、许可、topic、版本、有效期和处理方式。个人简历、投递记录和面试话术不进入仓库或检索库。规则见 [`data/README.md`](data/README.md)。
+每条语料记录固定来源 URL、许可、topic、revision 和 SHA-256。个人简历、投递记录、面经原文和面试话术不进入当前工作树或检索库；同步脚本还会删除已退出清单的陈旧文件。规则见 [`data/README.md`](data/README.md)。
 
 ### API 协议
 
@@ -145,6 +149,9 @@ JUDGE_MODEL=deepseek-chat
 首次运行会下载 embedding 模型，并根据 manifest 重建本地 Qdrant 与 parent store：
 
 ```bash
+# 可选：从固定 revision 重新下载并校验公开语料
+python3 data/sync_sources.py
+
 python project/ingest_corpus.py
 ```
 
@@ -166,7 +173,7 @@ curl http://127.0.0.1:8000/health
 ```bash
 curl -N http://127.0.0.1:8000/stream \
   -H 'Content-Type: application/json' \
-  -d '{"message":"解释代码沙箱为什么需要容器池","stream_tokens":true}'
+  -d '{"message":"解释 HyDE 如何改写检索问题","stream_tokens":true}'
 ```
 
 ### 5. 启动 Gradio 客户端
@@ -196,23 +203,34 @@ python run_eval.py
 
 ### 已记录基线
 
-以下是 2026-08-17 的一次历史运行快照，不是发布门禁或长期 SLA。30 条题目中执行 26 条，4 条因引用隐私排除语料而跳过；完整报告见 [`eval/reports/baseline-2026-08-17.md`](eval/reports/baseline-2026-08-17.md)。
+2026-08-23 `all-in-rag` 公开语料基线是当前基准：完整报告见 [`eval/reports/baseline-all-in-rag-2026-08-23.md`](eval/reports/baseline-all-in-rag-2026-08-23.md)，per-item 数据见 [`baseline-all-in-rag-2026-08-23.jsonl`](eval/reports/baseline-all-in-rag-2026-08-23.jsonl)。30 条全部执行，0 错误、0 SKIP；检索指标只统计实际进入检索流程的 20 题，5 条 HITL 澄清题由 clarification 指标单独评估。
 
 | 指标 | 结果 |
 |---|---:|
-| Recall@5 / Recall@7 | 0.864 / 0.864 |
-| MRR | 0.807 |
-| Faithfulness | 0.909 |
-| Answer relevancy | 0.923 |
-| Context precision / recall | 0.484 / 0.573 |
-| Latency P50 / P95 | 16.78s / 38.65s |
+| Recall@5 / Recall@7 | 1.000 / 1.000 |
+| MRR | 0.900 |
+| Faithfulness | 0.938 |
+| Answer relevancy | 0.906 |
+| Context precision / recall | 0.690 / 0.908 |
+| Refusal recall / precision | 0.800 / 0.840 |
+| Clarification rate | 0.600 |
+| Latency P50 / P95 | 14.65s / 21.89s |
 
-保留偏低指标是刻意的：基线用于暴露问题，不用于包装结果。当前主要缺口是 Agent Runtime 语料召回、显式拒答和过期文档过滤。
+迁移前的 Java/个人项目语料及其评测报告已从 Git 历史中清除，不再提供或作为比较基准。
+
+保留偏低指标是刻意的：当前主要缺口是显式拒答、澄清问题覆盖度和版本过滤。Recall 1.000 也只代表这套固定语料与 golden set，不是对开放问题的泛化承诺。
 
 ## 测试
 
 ```bash
 python -m pytest tests/
+```
+
+CI（`.github/workflows/ci.yml`）在 push/PR 时执行 compile 检查 + 全量 pytest，作为进入 main 的语法与回归门禁。本地等价命令：
+
+```bash
+python -m compileall -q rag_agent core api db schema client document_chunker.py config.py utils.py  # 在 project/ 下
+python -m pytest tests/ -q
 ```
 
 当前测试覆盖：
@@ -263,4 +281,4 @@ notebooks/         upstream learning notebooks
 
 ## License
 
-本项目沿用上游的 [MIT License](LICENSE)。原作者版权声明和许可文本保持不变；使用或分发本 fork 时应继续保留该声明。
+代码沿用上游的 [MIT License](LICENSE)，原作者版权声明保持不变。`data/raw/docs/` 与 `data/interview_docs/docs/` 中的第三方语料遵循 [CC BY-NC-SA 4.0](data/THIRD_PARTY_NOTICES.md)，不适用 MIT License；使用或分发时须分别遵守对应条款。

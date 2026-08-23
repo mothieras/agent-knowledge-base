@@ -15,10 +15,7 @@ import config
 PRICE_IN_PER_M = 0.28
 PRICE_OUT_PER_M = 1.68
 
-EXPIRED_SOURCES = {
-    "projects/moj-sandbox-design-docs/specs/2026-06-03-container-pool-design.md",
-    "projects/moj-sandbox-design-docs/plans/2026-06-03-container-pool.md",
-}
+EXPIRED_SOURCES = set()
 
 
 def build_judge_llm() -> ChatOpenAI:
@@ -35,7 +32,7 @@ def _strip_anchor(source: str) -> str:
 
 
 def retrieval_metrics(items, hits_by_item, k_values=(5, 7)) -> dict:
-    """items: golden 条目(带 id/expected_sources)；hits_by_item: {id: [(source, content), ...]}"""
+    """计算实际进入检索流程的题；HITL 澄清题由 clarification 指标单独评估。"""
     recall_at = {k: [] for k in k_values}
     mrr_vals = []
     section_total = section_hit = 0
@@ -43,6 +40,8 @@ def retrieval_metrics(items, hits_by_item, k_values=(5, 7)) -> dict:
     scored = 0
 
     for item in items:
+        if item.get("category") == "ambiguous_followup":
+            continue
         expected = [s for s in item.get("expected_sources", []) if s]
         if not expected:
             continue
@@ -229,7 +228,7 @@ def generation_metrics(rows, judge_llm):
     result = evaluate(
         dataset,
         metrics=[faithfulness, answer_relevancy, context_precision, context_recall],
-        llm=LangchainLLMWrapper(judge_llm),
+        llm=LangchainLLMWrapper(judge_llm, bypass_n=True),
         embeddings=LangchainEmbeddingsWrapper(HuggingFaceEmbeddings(model_name=config.DENSE_MODEL)),
     )
     df = result.to_pandas()
