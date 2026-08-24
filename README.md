@@ -64,7 +64,7 @@
 - RAG 评估方法与工具
 - 知识图谱增强 RAG
 
-每条语料记录固定来源 URL、许可、topic、revision 和 SHA-256。个人简历、投递记录、面经原文和面试话术不进入当前工作树或检索库；同步脚本还会删除已退出清单的陈旧文件。规则见 [`data/README.md`](data/README.md)。
+每条语料记录固定来源 URL、许可、topic、revision 和 SHA-256；同步脚本会删除已退出清单的陈旧文件。规则见 [`data/README.md`](data/README.md)。
 
 ### API 协议
 
@@ -215,8 +215,6 @@ python run_eval.py
 | Refusal recall / precision | 0.800 / 0.840 |
 | Clarification rate | 0.600 |
 | Latency P50 / P95 | 14.65s / 21.89s |
-
-迁移前的 Java/个人项目语料及其评测报告已从 Git 历史中清除，不再提供或作为比较基准。
 
 保留偏低指标是刻意的：当前主要缺口是显式拒答、澄清问题覆盖度和版本过滤。Recall 1.000 也只代表这套固定语料与 golden set，不是对开放问题的泛化承诺。
 

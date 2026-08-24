@@ -1,10 +1,11 @@
-"""T1 冒烟测试：ingest 一篇自有笔记 → 提一个问题 → 打印最终回答。
+"""T1 冒烟测试：ingest 一篇公开语料 → 提一个问题 → 打印最终回答。
 
-前提: project/.env 已配置 DEEPSEEK_API_KEY。
+前提: project/.env 已配置 DEEPSEEK_API_KEY；语料已由 data/sync_sources.py 同步。
 运行: cd project && uv run --python ../.venv/bin/python smoke_test.py
 """
 import os
 import sys
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -18,8 +19,8 @@ from langchain_core.messages import HumanMessage
 from core.rag_system import RAGSystem
 from core.document_manager import DocumentManager
 
-TEST_DOC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "raw", "Redis-缓存三连.md")
-QUESTION = "缓存穿透是什么？怎么解决？"
+TEST_DOC = str(Path(__file__).resolve().parent.parent / "data" / "raw" / "docs" / "chapter4" / "14_query_rewriting.md")
+QUESTION = "什么是 HyDE？"
 
 rs = RAGSystem()
 rs.initialize()
