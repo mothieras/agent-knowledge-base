@@ -4,28 +4,68 @@
 
 本项目最终形态为：
 
-> **可复现、可评测、可私有部署的中文 Agentic RAG 参考服务。**
+> **检索质量可量化、回答证据可核验，并可在核心能力稳定后私有部署的中文 Agentic RAG 参考实现。**
 
-项目不以通用 SaaS 或微服务平台为目标。整体保持**模块化单体 + 独立存储 + 离线入库任务**，以检索调优、Agent 决策和评测闭环为主线；私有部署只是可运行边界，不扩展成平台工程。核心价值集中在四个方面：
+项目不以通用 SaaS、微服务平台或基础设施模板为目标。核心价值按优先级排列：
 
-1. 中文检索质量能够在有区分度的挑战集上量化。
-2. 回答有证据，无证据时能够明确拒答。
-3. 澄清、拒答和正常回答都能通过真实多轮脚本验证。
-4. 从空环境能够以最小依赖稳定部署、复现和回归。
+1. 能用有区分度的评测判断中文检索是否真的改善。
+2. 能解释检索到了什么、为什么回答，以及引用来自哪里。
+3. 无证据时拒答，有歧义时澄清，三种决策都能被真实脚本验证。
+4. 核心行为稳定后，再提供最小、可复现的私有部署闭环。
 
-当前项目已经具备双图 Agent、HITL 澄清、受治理语料、30 题评测集和 FastAPI/SSE 服务层。后续重点是建立更难的检索评测、补齐显式拒答和可核验引用；持久化与访问控制只做到私有部署所需的最小闭环。
+当前项目已经具备双图 Agent、HITL 澄清、受治理语料、30 题评测集、Qdrant hybrid 检索和 FastAPI/SSE 原型。现有指标可以作为回归基线，但题集区分度、结构化 provenance、显式拒答、可核验引用和真实多轮评测仍未完成。
 
-根 `README.md` 继续作为项目已完成功能、验证证据和当前边界的活档真相源；本文只描述目标形态与未来路线，不代表对应能力已经完成。
+根 `README.md` 是已完成功能、验证证据和当前边界的活档真相源。本文描述目标、依赖顺序和退出条件，不把计划中的能力写成已经完成。
 
-## 最终架构
+## 第一性原则
+
+### 1. 项目的价值不是“能启动”，而是“结果可信”
+
+容器成功启动只能证明打包和进程编排有效，不能证明：
+
+- 检索结果相关；
+- 新旧版本处理正确；
+- 回答受证据支持；
+- 无答案时会拒答；
+- 引用能够回查原文。
+
+因此，Docker、Compose、持久化和访问控制不能成为检索与回答质量开发的前置门槛。
+
+### 2. 先建立判定标准，再修改算法
+
+如果挑战集不能区分方案优劣，新增 sparse、RRF 或 reranker 只是在堆功能。算法改造前必须冻结问题、qrels、指标、模型配置和旧方案基线，避免看到结果后再调整验收标准。
+
+### 3. 先稳定证据契约，再实现过滤、拒答和引用
+
+版本过滤、检索诊断、拒答阈值和 citation 都依赖结构化命中。如果继续从拼接字符串中解析 `File Name:`，后续每层都会重复修补同一缺口。
+
+固定依赖顺序：
 
 ```text
+评测基线
+  → 结构化 RetrievalHit 与 metadata
+  → 有区分度的挑战集
+  → 检索消融与策略选择
+  → 回答 / 澄清 / 拒答 / 引用
+  → 稳定服务协议
+  → 私有部署与发布
+```
+
+### 4. 延后高返工、低信息量的工作
+
+镜像分层、Compose 编排、Postgres、认证、备份和发布脚本依赖最终的运行进程、配置项、存储边界和 API 契约。过早完成这些工作会随核心设计变化反复重做，却不能降低当前最大的质量风险。
+
+仓库中已有的 Docker/Compose 资产可以保留为实验性运行工具，但在最终部署阶段前不构成开发门禁，也不阻塞 M0–M5。
+
+## 目标架构
+
+```text
+本地应用与协议层（M5 稳定）
 Web / SDK / Gradio
         │
         ▼
 FastAPI v1
-  invoke · stream · history · health
-  deployment bearer token · exact CORS
+  invoke · stream · history
         │
         ▼
 RAGSystem（composition root）
@@ -36,36 +76,40 @@ RAGSystem（composition root）
   │    └─ 带引用回答
   │
   ├─ Retriever
-  │    ├─ Dense candidate
+  │    ├─ dense candidate
   │    ├─ jieba sparse candidate
   │    ├─ RRF fusion
   │    ├─ version / effective-date filter
   │    └─ optional reranker
   │
-  ├─ Qdrant（local / server profile）
+  ├─ Qdrant
   ├─ Parent Document Store
-  └─ PostgresSaver
+  └─ injectable checkpointer
 
-独立 Ingest Job
+独立 Ingest
   manifest → 校验 → 分块 → metadata → 索引版本 → 发布
 
-Eval / Observability
-  golden set · retrieval trace · LLM trace · latency · cost
+Eval
+  golden set · qrels · retrieval trace · decision · citation · latency · cost
+
+最终部署边界（M6 才固化）
+  Docker / Compose · Qdrant server · PostgresSaver
+  Bearer token · exact CORS · health · backup / restore
 ```
 
-系统继续保持现有 L0–L4 单向依赖：
+系统继续遵守 L0–L4 单向依赖：
 
-- L0 负责语料、索引、检索、融合、重排和版本策略。
-- L1 负责 Agent 编排、澄清、拒答和引用决策。
-- L2 负责依赖装配、checkpointer 和运行配置。
-- L3 负责稳定的 HTTP/SSE 协议、最小访问控制和线程续接。
-- L4 只负责消费协议和展示结果。
+- L0：语料、索引、检索、融合、重排和版本策略。
+- L1：Agent 编排、澄清、拒答和引用决策。
+- L2：依赖装配、checkpointer 和运行配置。
+- L3：HTTP/SSE 协议、线程生命周期和最小访问边界。
+- L4：客户端与展示。
 
-FastAPI 不感知 jieba、RRF、reranker 或图节点内部实现。
+FastAPI 不感知 jieba、RRF、reranker 或图节点内部实现。Docker 和 Compose 只负责最终进程装配，不反向塑造 L0–L4 的内部契约。
 
 ### 结构化检索结果
 
-当前检索工具返回拼接字符串，API 再从 `File Name:` 文本中解析来源。最终应改为结构化命中：
+当前检索工具返回拼接字符串，API 再从 `File Name:` 文本中解析候选来源。目标契约为：
 
 ```text
 RetrievalHit
@@ -75,98 +119,106 @@ RetrievalHit
   version
   effective_date
   expired_date
+  priority
   score
   retrieval_channel
   content
   span
 ```
 
-Agent 可以消费格式化文本，但 API、评测和引用必须使用结构化 artifact，避免依靠字符串解析实现拒答、引用和检索诊断。
+Agent 可以消费由 `RetrievalHit` 格式化的上下文，但 API、评测、过滤和引用必须使用结构化 artifact，不能依赖文本解析。
 
 ## 路线计划
 
-按单人全职估算约 **5–7 周**。进度以阶段退出条件为准，不以开发时间作为完成声明。
+按单人全职估算约 **6–8 周**。阶段由依赖关系和退出证据推进，不按日期宣布完成。
 
-| 阶段 | 目标 | 主要工作 | 退出条件 |
+| 阶段 | 要解决的根本问题 | 主要工作 | 严格退出条件 |
 |---|---|---|---|
-| **M0 可重复运行** | 让当前原型形成可靠运行闭环 | 修复 Docker build context；统一 sync、ingest、test、eval、up 命令；增加真实组件 smoke；拆分 liveness/readiness | `docker compose build` 成功；空环境完成 sync→ingest→API；`/health=ready`；pytest 全绿；容器 smoke 可在本地或发布前手动复现 |
-| **M1 检索契约与 metadata** | 为后续检索升级建立稳定接口 | 增加 `Retriever`/`RetrievalHit`；manifest metadata 全链路入库；记录索引版本；ToolFactory 不再依赖 Qdrant 字符串格式 | chunk 可反查 source/version/date/span；metadata 单测及真实索引测试通过；API 层无 L0 内部依赖 |
-| **M2 检索挑战集与中文检索升级** | 让检索改造的收益能够被证明 | 先扩展并冻结检索挑战集与改造前基线，再实现 dense + jieba sparse、RRF、版本/有效期过滤，并通过消融决定是否启用 reranker | 检索计分题由 20 条扩展到至少 40 条，覆盖真实新旧版本冲突、困难多跳和 hard negative；原 30 题 Recall@5/MRR 只作回归守卫；挑战集的排序敏感指标与 Context Precision 均优于冻结基线；困难分组无退化；形成消融报告 |
-| **M3 多轮决策与可信回答** | 验证完整的澄清、拒答和引用链路 | 为澄清题补多轮回复脚本；runner 使用同一 `thread_id` 恢复执行；实现显式拒答路由、chunk/span 引用和结构化 decision；默认不暴露完整 context | 所有澄清题完成两轮执行且 0 ERROR/SKIP；分别报告澄清召回、过度澄清率和澄清后解决率；正常回答、澄清、拒答三条路径均有测试；citation 全部可反查实际命中块 |
-| **M4 最小私有部署** | 证明 checkpointer seam 和最小访问控制可用 | PostgresSaver；单一部署级 Bearer token；精确 CORS；Compose 启动说明；备份/恢复文档与脚本 | 重启后会话恢复；无凭据或错误凭据请求被拒绝；并发 thread 不串线；一条文档化命令启动；备份/恢复脚本有最小 smoke，不要求生产级演练 |
-| **M5 轻量发布门禁** | 在不增加持续维护负担的前提下形成可发布版本 | 固定 API v1 契约；PR CI 保持 compile + pytest；容器 smoke 作为本地/发布前检查；带密钥 eval 走手动或可选 nightly；维护发布清单 | 默认 CI 全绿；发布记录附容器 smoke 与 eval 证据；报告绑定 commit、manifest hash、索引版本和模型配置 |
+| **M0 评测契约与冻结基线** | 我们如何知道后续改动是改善而不是波动？ | 审计现有 golden set 和指标；固定语料 revision、manifest hash、索引参数、模型与 prompt；冻结 top-5 检索 trace；报告绑定代码版本 | 30 题基线 0 ERROR/0 SKIP；报告记录 commit、manifest、模型和索引配置；每题 top-5 的有序 source/content hash 可机器比对；指标定义与计分范围明确；只声明回归基线，不宣称检索已充分优化 |
+| **M1 检索证据契约** | 每个命中能否被机器稳定追踪和验证？ | 引入 `Retriever` / `RetrievalHit`；manifest metadata 全链路传播；chunk/span 与索引版本；增加受治理的多版本/过期 fixture；移除来源字符串解析 | 每个命中可反查 source/version/date/chunk/span；API 与评测不再解析 `File Name:`；metadata 单测和真实本地索引集成测试通过；原 30 题指标及 top-5 来源/内容哈希顺序与 M0 冻结 trace 完全一致；L3 不依赖 L0 内部实现 |
+| **M2 检索挑战集** | 当前题集能否区分检索策略优劣？ | 在改算法前扩展困难题；补 qrels；纳入受治理的版本 fixture；冻结旧 retriever 基线和数值验收阈值 | 至少 40 条实际进入检索计分的问题；覆盖中文精确术语、hard negative、困难多跳和 active/expired 版本冲突；可计算 Precision/nDCG 等排序指标；题集、qrels、`eval/acceptance.yaml` 和旧基线在 M3 前提交且冻结 |
+| **M3 中文检索实证升级** | 哪种检索组合在质量与成本之间最好？ | dense、jieba sparse、RRF、有效期过滤与可选 reranker；分组评测和消融 | 所有预设组合完成同配置消融；expired fixture 默认不返回；报告包含质量、P95 延迟和峰值内存；只有满足 M2 晋升阈值的方案才能替换基线，否则保留原方案并以负结果完成阶段 |
+| **M4 可信回答与多轮决策** | 系统何时回答、澄清或拒答，依据能否核验？ | 显式 decision；拒答路由；结构化 citation；真实两轮澄清脚本；同 thread 恢复；实现前冻结 decision 阈值 | `answered / clarification_required / refused` 三路径均有测试；0 ERROR/SKIP；citation validity 与澄清后解决率均为 100%；拒答 recall/precision 均 ≥0.90；正常题误拒率与过度澄清率均 ≤5% |
+| **M5 本地服务契约** | 已证明的核心能力能否通过稳定协议被正确消费？ | 收敛 API v1 schema；统一 invoke/stream/history；线程生命周期；SSE terminal contract；context debug 边界 | 本地 Uvicorn 真实链路覆盖回答、拒答、澄清恢复和 SSE `done`；API/client/schema 契约测试全绿；默认响应不暴露完整 context；本阶段不要求 Docker、Postgres 或部署认证 |
+| **M6 私有部署与发布** | 如何把稳定系统以最小风险交付和复现？ | Docker/Compose；Qdrant server profile；PostgresSaver；Bearer token；精确 CORS；health；原子入库；备份恢复；发布门禁 | 空环境用一条文档化命令完成 sync→ingest→up→真实 smoke；重启后会话恢复；并发 thread 不串线；未认证请求被拒绝；备份恢复 smoke 通过；发布记录附容器与 eval 证据 |
 
-## 各阶段关键取舍
+## 阶段说明与关键取舍
 
-### M0：优先解决确定性阻塞
+### M0：评测契约先于工程扩张
 
-当前 `docker-compose.yml` 使用 `./project` 作为 build context，但 `project/Dockerfile` 执行：
+现有 30 题和公开报告是有价值的回归资产，但 Recall@5 已为 1.000，且实际进入检索计分的题目只有 20 条。它们不能证明更复杂的检索策略具有增量价值。
 
-```dockerfile
-COPY requirements.txt .
-```
+M0 只回答三个问题：
 
-`requirements.txt` 位于仓库根目录，因此当前 Compose 配置无法完成构建。容器文件存在不等于容器化链路已经完成。
+1. 当前系统在固定输入和配置下表现如何？
+2. 每项指标具体统计哪些题、如何处理 ERROR/SKIP？
+3. 后续报告能否精确绑定代码、语料、索引和模型？
 
-测试需要分成两个层次：
+M0 使用本地开发环境完成，不要求构建镜像。默认 PR 门禁继续保持 compile + pytest；带密钥 eval 可以手动执行，不必阻塞每次提交。
 
-- 单元与契约测试：继续通过 stub 隔离 LLM 和 Qdrant。
-- 真实 smoke：覆盖临时索引、API 生命周期及 SSE 完整结束事件。
+### M1：先消除字符串型证据债务
 
-### M1：先稳定数据契约，再升级算法
-
-manifest 已经包含 `version`、`effective_date`、`expired_date` 和 `priority`，但当前入库只传播 `source`。如果直接实现 RRF 或 reranker，后续版本过滤和引用仍需再次调整数据链路。
-
-建议固定以下实施顺序：
+manifest 已包含 `version`、`effective_date`、`expired_date` 和 `priority`，但当前链路主要传播 `source`。版本过滤、拒答证据和 citation 都依赖同一份结构化 metadata，因此必须一次打通：
 
 ```text
-结构化命中 → metadata 完整传播 → filter → fusion → rerank
+manifest
+  → document metadata
+  → parent / child chunks
+  → Qdrant payload
+  → RetrievalHit
+  → graph state / artifact
+  → API 与 eval
 ```
 
-### M2：先建立能证明提升的检索挑战集
+索引版本属于数据与检索契约，不属于 Docker。无论本地脚本还是未来容器入库，都必须产生相同的版本信息。
 
-当前 Recall@5 已为 1.000，只能继续作为回归守卫，不能证明检索升级有效。M2 必须先扩展评测，再修改检索实现：
+当前 14 篇公开语料没有 active/expired 多版本对，无法验证版本传播和过滤。M1 增加项目自有、可公开、内容最小的受治理 fixture：同一文档至少包含一个已过期版本和一个当前有效版本，并具有明确预期命中。它只用于 metadata、过滤和冲突评测，不改写第三方语料。
 
-1. 在算法改造前增加困难多跳、真实新旧版本冲突、精确术语和 hard-negative 问题。
-2. 为检索题补充 qrels 或等价的相关性标注，使 `source_precision@5`、`nDCG@5` 等排序敏感指标可计算。
-3. 使用当前 retriever 在新增挑战集上记录并冻结基线，同时预先固定验收阈值。
-4. 保持新增题目和阈值在检索改造期间不变，避免针对结果调整题集。
+M0 额外冻结每道检索题 top-5 的有序 `source + content_hash` trace。M1 完成结构重构后必须机器比对：原 30 题指标完全相等，且上述有序 trace 逐项相等。M1 不允许顺便调整召回或排序；任何行为优化都推迟到 M3，因此不存在用“预期变化”放行回归的口子。
 
-Context Precision 当前为 0.6895，应作为 M2 的核心生成侧结果；Recall@5/MRR 只负责保护原有能力。比较必须固定模型、prompt、语料、索引参数和 judge 配置。
+### M2：先冻结挑战，再看算法结果
 
-reranker 会增加模型体积、资源消耗和 P95 延迟，不应仅因为路线图中存在该能力就默认启用。至少维护四组消融实验：
+M2 在任何新检索实现进入默认路径前完成：
 
-1. dense only
-2. dense + jieba sparse
-3. dense + sparse + RRF
-4. dense + sparse + RRF + reranker
+1. 增加中文精确术语、hard negative、困难多跳和真实新旧版本冲突题。
+2. 为检索题补 qrels 或等价的分级相关性标注。
+3. 使用当前 Qdrant hybrid retriever 记录冻结基线。
+4. 在看到新算法结果前写入分组指标和验收阈值。
+5. 将 M1 的 active/expired fixture 纳入版本冲突题和 qrels。
+6. 在 `eval/acceptance.yaml` 写入并提交数值门槛，然后才开始 M3。
+7. 评测期间保持问题、qrels、阈值、模型、prompt、语料和索引参数不变。
 
-只有第四组在挑战集的排序指标和 Context Precision 上产生稳定收益，且延迟与资源开销可接受时，才进入默认配置。
+`eval/acceptance.yaml` 至少固定：
 
-### M3：多轮决策、拒答与引用
+- nDCG@5 和 source precision@5 相对基线的最小绝对提升均为 `0.05`；
+- 困难多跳、版本冲突和 hard-negative 分组指标不得下降；
+- 原 30 题 Recall@5 与 MRR 不下降；
+- Context Precision 在 3 次独立生成评测中的均值至少提升 `0.03`，且任一次不得低于基线 `0.02` 以上；
+- 默认检索方案的 P95 延迟和峰值内存均不得超过基线的 `2x`。
 
-#### 多轮澄清评测
+如果 M2 的冻结基线证明某个阈值因指标天花板不可计算，必须在任何 M3 实现前通过单独提交调整题集或指标，不能在看到新方案结果后修改。这一步的产物是“尺子”，不是新的检索功能。
 
-当前基线的澄清题只有首轮输入，没有用户澄清回复脚本。M3 应为每条 `ambiguous_followup` 增加至少以下信息：
+### M3：检索能力由消融决定，不由路线图指定
 
-```text
-clarification_reply
-expected_first_turn_decision
-expected_final_decision
-expected_sources
-```
+当前已经存在 Qdrant dense + FastEmbed sparse hybrid。M3 评估的是中文场景下，jieba sparse、自定义融合、版本过滤和 reranker 是否带来可证明的净收益，而不是从零增加“hybrid”标签。
 
-评测 runner 必须先验证首轮是否正确暂停并提出有效问题，再使用同一 `thread_id` 提交澄清回复，验证图是否恢复、检索和最终回答是否正确。指标至少区分：
+至少比较：
 
-- clarification recall：该澄清时是否澄清。
-- over-clarification rate：明确问题是否被多余地打断。
-- resolution success：得到补充信息后是否完成正确回答或拒答。
+1. dense only；
+2. 当前 dense + FastEmbed sparse hybrid 基线；
+3. dense + jieba sparse；
+4. dense + jieba sparse + RRF；
+5. 上述组合 + reranker。
 
-单轮 `clarification_rate` 只保留为历史对比，不再作为 M3 验收依据。
+`eval/acceptance.yaml` 是新方案替换当前基线的晋升门槛，不是强迫实验必须得到正结果。若所有候选都未达标，M3 以“保留当前方案”的负结果正常完成；版本有效期过滤仍作为独立 correctness 门禁落地。
 
-#### 结构化引用契约
+reranker 会增加模型体积、P95 延迟和运行资源。只有第五组满足全部质量与资源门槛时才进入默认配置；否则保留为关闭的实验选项或直接删除。这里没有“感觉更好”的通过方式。
 
-最终响应至少应包含：
+### M4：回答可信依赖检索证据已经稳定
+
+M4 不用 prompt 掩盖检索问题。只有 M1 的结构化命中和 M3 的检索策略通过验收后，才固定回答决策。
+
+目标响应至少包含：
 
 ```json
 {
@@ -185,79 +237,130 @@ expected_sources
 }
 ```
 
-`decision` 建议定义为：
+`decision` 固定为：
 
 ```text
 answered · clarification_required · refused
 ```
 
-客户端不应通过空答案或 `interrupted` 字段猜测当前状态。
+客户端不再通过空答案或 `interrupted` 猜测状态。
 
-### M4：部署是边界，不是主线
+每条 `ambiguous_followup` 至少增加：
 
-M4 只验证现有 checkpointer seam 和最小私有部署能力，不建设通用平台：
+```text
+clarification_reply
+expected_first_turn_decision
+expected_final_decision
+expected_sources
+```
 
-- 使用 PostgresSaver 证明会话可以跨进程重启恢复。
-- 使用单一部署级 Bearer token 拒绝未认证请求；该模式不声明用户身份或 thread ownership。
-- CORS 使用明确来源配置，不实现完整身份系统。
-- 提供 Compose、配置检查以及备份/恢复文档和脚本。
+runner 先验证首轮暂停与澄清问题，再使用同一 `thread_id` 提交回复并验证恢复结果。单轮 `clarification_rate` 只作历史对比，不作为最终门禁。
 
-不在该阶段实现 OIDC、RBAC、租户后台、配额、限流、审计平台、自动迁移体系或生产级备份演练。省下的投入优先用于 M2 的检索挑战集和 M3 的拒答、多轮评测。
+M4 实现开始前先冻结 decision 标注集和阈值：拒答 recall 与 precision 均不低于 `0.90`，正常可回答题误拒率不高于 `5%`，明确问题过度澄清率不高于 `5%`，澄清后解决率与 citation validity 均为 `100%`。整个评测必须 0 ERROR、0 SKIP；未执行的题不能从分母中消失。
 
-### M5：CI 保持轻量
+### M5：先稳定产品语义，再冻结部署形态
 
-push/PR 默认门禁继续采用 compile 语法检查和全量 pytest。真实模型 eval 需要密钥且运行较慢，容器 smoke 也会增加 CI 时间和维护成本，因此二者作为发布前可复现检查；有稳定运行环境后，再选择性加入 nightly，而不是阻塞每个 PR。
+FastAPI/SSE 原型已经存在，但 API v1 应在 decision、citation 和 thread 行为确定后再冻结。否则部署层会围绕变化中的 schema、状态机和存储需求反复调整。
 
-## 发布质量门槛
+M5 的真实 smoke 直接在本地启动 Uvicorn，验证：
 
-### 检索
+- 正常回答；
+- 无证据拒答；
+- 首轮澄清和同 thread 恢复；
+- SSE 恰好一个 terminal `done`；
+- client 与 Gradio 只消费公开协议。
 
-- 原 30 题继续保持 0 ERROR、0 SKIP；Recall@5 1.000 和 MRR 0.900 仅作为回归守卫。
-- M2 开发前冻结扩展挑战集及当前 retriever 基线。
-- 扩展集至少包含 40 条实际进入检索计分的问题，并覆盖困难多跳、真实版本冲突和 hard negative。
-- 排序敏感指标与 Context Precision 必须相对冻结基线提升，具体阈值在检索实现改动前写入评测配置。
-- 版本过期文档默认不会进入检索结果，每个命中包含完整 provenance。
+这一阶段只验证应用协议，不以 Docker build、Compose、Postgres、认证或备份为退出条件。
 
-### 生成与决策
+### M6：部署是最终边界，不是研发起点
+
+到 M6 时，核心依赖、索引契约、API schema、会话语义和进程角色已经稳定，才有足够信息设计最终镜像与编排。
+
+M6 包含：
+
+- runtime、ingest、eval 和 UI 的最终镜像/进程边界；
+- Compose 本地 Qdrant server 与 PostgresSaver；
+- liveness、readiness 和入库完成状态；
+- 单一部署级 Bearer token 与精确 CORS；
+- 配置检查、资源限制、备份和恢复脚本；
+- CPU 环境从空数据卷完成全链路复现；
+- 发布前容器 smoke 与带密钥 eval。
+
+不建设 OIDC、RBAC、多租户后台、配额、限流平台、Kubernetes、高可用或生产级灾备。部署只证明这个参考服务可以被最小、可信地交付。
+
+现有 Dockerfile 和 Compose 是可复用的实验资产。M6 可以继承、修改或删除它们；它们的当前形态不约束 M1–M5 的设计。
+
+## 质量门槛
+
+### M0：基线证据
+
+- 30 题运行保持 0 ERROR、0 SKIP。
+- 报告绑定 commit、manifest hash、语料 revision、索引参数、模型和 prompt 版本。
+- 每道检索题保存 top-5 有序 `source + content_hash`，供 M1 做逐项机器比对。
+- Recall@5 1.000、MRR 0.900 等当前结果只作为回归守卫，不宣传为检索上限。
+
+### M1：证据契约
+
+- public corpus 与 active/expired fixture 的 metadata 均能从 manifest 传播到 `RetrievalHit`。
+- M0 的 30 题指标完全相等；每题 top-5 的有序 `source + content_hash` trace 逐项相等。
+- API、评测和后续引用只消费结构化 artifact，不解析上下文展示文本。
+
+### M2–M3：检索
+
+- 扩展集至少 40 条实际进入检索计分的问题。
+- qrels 支持 source precision@5、nDCG@5 和分组统计。
+- `eval/acceptance.yaml` 在实现前冻结质量、P95 延迟和峰值内存门槛，M3 期间不得修改。
+- 候选方案只有在 nDCG@5、source precision@5、Context Precision、困难分组和原 30 题守卫全部达到冻结门槛时才可晋升；没有候选达标时保留基线。
+- active/expired fixture 能产生反例，过期版本默认不会进入结果；每个命中包含完整 provenance。
+
+### M4：生成与决策
 
 - Faithfulness 不低于当前基线 0.938。
-- 引用 100% 可解析到实际检索结果，未检索到证据时不得生成伪引用。
-- 所有澄清题具有第二轮用户回复，并完成同一 thread 上的恢复执行。
-- 分别报告 clarification recall、over-clarification rate 和 resolution success；单轮 clarification rate 不作为验收门禁。
-- 拒答指标在扩展集上优于当前基线，同时报告正常问题的误拒率。
+- citation validity 与澄清后解决率均为 100%，未检索到证据时不得生成伪引用。
+- 拒答 recall/precision 均不低于 0.90；正常题误拒率与明确题过度澄清率均不高于 5%。
+- 所有澄清题具有第二轮回复，并完成同一 thread 上的恢复执行。
+- 全集 0 ERROR、0 SKIP，所有比例使用冻结标注集的完整分母。
 
-### 服务与发布
+### M5：服务协议
 
-- 分别记录流式首 token 和完整响应的 P50/P95，作为回归证据而非独立平台建设目标。
-- API 重启后会话可恢复，无凭据或错误凭据不能读取 history。
+- invoke、stream、history 对 decision 和 citation 的表达一致。
+- SSE terminal contract、错误事件和中断恢复有自动化测试。
 - 原始 contexts 默认只在 debug/eval 模式返回。
-- push/PR 只强制 compile + pytest；容器 smoke 和带密钥 eval 在发布前运行并保存证据。
+- 本地真实 API smoke 可重复通过。
 
-## 暂不纳入范围
+### M6：部署与发布
 
-以下能力在核心质量闭环完成前不进入路线：
+- 空环境完成 sync→ingest→API→真实 SSE smoke。
+- API 重启后会话可恢复，并发 thread 不串线。
+- 无凭据或错误凭据不能调用受保护接口或读取 history。
+- 分别记录流式首 token 和完整响应的 P50/P95。
+- 发布记录附 commit、manifest、索引版本、模型配置、容器 smoke、eval 和备份恢复证据。
 
-- Kubernetes 和微服务拆分。
-- 更多 Agent 或 GraphRAG。
-- 通用拖拽式工作流。
-- 多模型自动路由。
-- 文档管理后台。
-- 大规模多租户 SaaS。
-- per-user token、thread ownership、OIDC、RBAC、配额、限流和审计平台。
-- 自动迁移体系、生产级高可用和备份演练。
-- 完整日志/指标基础设施和每个 PR 的容器 smoke。
-- 在没有消融证据时默认启用高成本 reranker。
+## 不纳入范围
 
-近期优先保证系统能够解释检索到了什么、为什么回答、证据在哪里，以及什么时候应该拒答。
+核心质量闭环完成前不进入以下工作：
 
-## 许可风险
+- Kubernetes 和微服务拆分；
+- 更多 Agent 或 GraphRAG；
+- 通用拖拽式工作流；
+- 多模型自动路由；
+- 文档管理后台；
+- 大规模多租户 SaaS；
+- per-user token、thread ownership、OIDC、RBAC、配额、限流和审计平台；
+- 自动迁移体系、生产级高可用和灾备演练；
+- 完整可观测性平台和每个 PR 的容器 smoke；
+- 没有消融证据时默认启用高成本 reranker。
 
-当前检索语料遵循 **CC BY-NC-SA 4.0**，因此项目默认面向学习、评测、非商业演示和私有研究场景。
+近期优先级始终是：**衡量检索 → 稳定证据 → 改善检索 → 约束回答**。
+
+## 许可边界
+
+当前检索语料遵循 **CC BY-NC-SA 4.0**，项目默认面向学习、评测、非商业演示和私有研究场景。
 
 如果目标调整为商业产品，必须建立独立的语料迁移流程：
 
-1. 替换为自有语料或获得商业授权的语料。
-2. 重新生成 manifest、golden set 和评测基线。
+1. 替换为自有语料或获得商业授权的语料；
+2. 重新生成 manifest、golden set 和评测基线；
 3. 不随商业镜像分发由当前非商业语料构建的索引。
 
 该限制属于产品与数据许可边界，不能通过部署方式规避。

@@ -271,11 +271,11 @@ notebooks/         upstream learning notebooks
 
 ### 下一步
 
-1. 以当前基线为守卫，依次引入中文 sparse retrieval、fusion 与 reranker。
-2. 为无答案问题增加显式拒答路由，并单独优化 recall/precision。
-3. 将 manifest 的版本字段接入检索过滤。
-4. 用持久 checkpointer 替换 `InMemorySaver`，补充 thread 生命周期 API。
-5. 完成并验证容器化启动链路，再把 Docker Compose 提升为正式 quickstart。
+1. 固定评测契约，让报告绑定代码、语料、索引、模型与 prompt。
+2. 建立结构化 `RetrievalHit`，打通 manifest metadata、chunk/span 与索引版本。
+3. 先扩展并冻结有区分度的检索挑战集，再通过消融选择中文 sparse、fusion 和 reranker 策略。
+4. 在检索证据稳定后实现显式拒答、真实多轮澄清和可核验引用。
+5. 最后稳定服务契约并完成私有部署；严格阶段与退出条件见 [`ROADMAP.md`](ROADMAP.md)。
 
 ## License
 
