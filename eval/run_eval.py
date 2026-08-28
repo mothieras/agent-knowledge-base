@@ -103,9 +103,8 @@ class RunCollector(BaseCallbackHandler):
         self.tool_calls += 1
 
 
-def run_one(rs, recorder, item: dict) -> dict:
+def run_one(rs, item: dict) -> dict:
     rs.reset_thread()
-    recorder.clear()
     cfg = rs.get_config()
     collector = RunCollector()
     cfg["callbacks"] = (cfg.get("callbacks") or []) + [collector]
@@ -124,16 +123,18 @@ def run_one(rs, recorder, item: dict) -> dict:
     answer = state["messages"][-1].content if state.get("messages") else ""
 
     contexts = []
+    retrieval_hits = []
     seen = set()
     for ans in state.get("agent_answers", []):
         for c in ans.get("contexts", []):
-            if isinstance(c, RetrievalHit):
-                text = f"Parent ID: {c.parent_id}\nFile Name: {c.source}\nContent: {c.content.strip()}"
-            else:
-                text = str(c)
-            if text not in seen:
-                seen.add(text)
-                contexts.append(text)
+            if not isinstance(c, RetrievalHit):
+                continue
+            hit_key = (c.source, c.content)
+            if hit_key in seen:
+                continue
+            seen.add(hit_key)
+            contexts.append(f"Parent ID: {c.parent_id}\nFile Name: {c.source}\nContent: {c.content.strip()}")
+            retrieval_hits.append(hit_key)
 
     return {
         "id": item["id"],
@@ -143,7 +144,7 @@ def run_one(rs, recorder, item: dict) -> dict:
         "answer": answer,
         "clarified": clarified,
         "contexts": contexts,
-        "retrieval_hits": [(h.source, h.content) for h in recorder],
+        "retrieval_hits": retrieval_hits,
         "latency_s": round(latency, 2),
         "input_tokens": collector.input_tokens,
         "output_tokens": collector.output_tokens,
@@ -269,8 +270,7 @@ def main():
     args = ap.parse_args()
 
     items = load_golden()
-    recorder = []
-    rs = RAGSystem(record_retrieval=lambda docs: recorder.extend(docs))
+    rs = RAGSystem()
     print("初始化 RAGSystem（加载 embedding + 编译图）...")
     t_start = time.time()
     rs.initialize()
@@ -282,7 +282,7 @@ def main():
 
     for idx, item in enumerate(runnable, 1):
         print(f"[{idx}/{len(runnable)}] #{item['id']} [{item.get('category')}] {item['question'][:40]}", flush=True)
-        results.append(run_one(rs, recorder, item))
+        results.append(run_one(rs, item))
 
     for item in items:
         if should_skip(item):

@@ -1,10 +1,11 @@
 import uuid
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 import config
 from db.vector_db_manager import VectorDbManager
 from db.parent_store_manager import ParentStoreManager
-from db.retrieval import QdrantRetriever
+from db.retrieval import QdrantRetriever, RetrievalHit
 from document_chunker import DocumentChunker
 from rag_agent.tools import ToolFactory
 from rag_agent.graph import create_agent_graph
@@ -12,14 +13,18 @@ from core.observability import Observability
 
 class RAGSystem:
 
-    def __init__(self, collection_name=config.CHILD_COLLECTION, record_retrieval=None):
+    def __init__(self, collection_name=config.CHILD_COLLECTION):
         self.collection_name = collection_name
-        self.record_retrieval = record_retrieval
         self.vector_db = VectorDbManager()
         self.parent_store = ParentStoreManager()
         self.chunker = DocumentChunker()
         self.observability = Observability()
-        self.checkpointer = InMemorySaver()
+        # RetrievalHit lives in checkpointed state (AgentState.retrieved_contexts);
+        # register it with the msgpack serde so it round-trips as a typed object
+        # (not a dict) and survives strict mode / future PostgresSaver.
+        self.checkpointer = InMemorySaver(
+            serde=JsonPlusSerializer(allowed_msgpack_modules=[RetrievalHit])
+        )
         self.agent_graph = None
         self.thread_id = str(uuid.uuid4())
         self.recursion_limit = config.GRAPH_RECURSION_LIMIT
@@ -35,7 +40,7 @@ class RAGSystem:
             api_key=config.LLM_API_KEY,
             temperature=config.LLM_TEMPERATURE,
         )
-        tools = ToolFactory(retriever, record_retrieval=self.record_retrieval).create_tools()
+        tools = ToolFactory(retriever).create_tools()
         self.agent_graph = create_agent_graph(llm, tools, self.checkpointer)
 
     def get_config(self, thread_id=None, **configurable):
