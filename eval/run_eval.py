@@ -23,6 +23,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / "project" / ".env")
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import HumanMessage
 from core.rag_system import RAGSystem
+from db.retrieval import RetrievalHit
 import config
 import metrics as eval_metrics
 
@@ -126,9 +127,13 @@ def run_one(rs, recorder, item: dict) -> dict:
     seen = set()
     for ans in state.get("agent_answers", []):
         for c in ans.get("contexts", []):
-            if c not in seen:
-                seen.add(c)
-                contexts.append(c)
+            if isinstance(c, RetrievalHit):
+                text = f"Parent ID: {c.parent_id}\nFile Name: {c.source}\nContent: {c.content.strip()}"
+            else:
+                text = str(c)
+            if text not in seen:
+                seen.add(text)
+                contexts.append(text)
 
     return {
         "id": item["id"],
@@ -138,7 +143,7 @@ def run_one(rs, recorder, item: dict) -> dict:
         "answer": answer,
         "clarified": clarified,
         "contexts": contexts,
-        "retrieval_hits": [(d.metadata.get("source", ""), d.page_content) for d in recorder],
+        "retrieval_hits": [(h.source, h.content) for h in recorder],
         "latency_s": round(latency, 2),
         "input_tokens": collector.input_tokens,
         "output_tokens": collector.output_tokens,

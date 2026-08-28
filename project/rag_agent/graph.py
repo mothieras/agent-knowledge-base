@@ -18,13 +18,16 @@ from .nodes import (
 )
 from .edges import route_after_orchestrator_call, route_after_rewrite
 
-def create_agent_graph(llm, tools_list, checkpointer=None):
-    llm_with_tools = llm.bind_tools(tools_list)
+
+def create_agent_subgraph(llm_with_tools, tools_list, llm):
+    """Compile the AgentState subgraph (orchestrator → tools → compress → answer).
+
+    Exposed so the retrieval path (search → get_parent → compress → collect) can
+    be driven in tests with an in-memory Retriever and a stubbed LLM, without the
+    main graph's structured-output rewrite step. The interface is the test surface.
+    """
     tool_node = ToolNode(tools_list)
 
-    checkpointer = checkpointer or InMemorySaver()
-
-    print("Compiling agent graph...")
     agent_builder = StateGraph(AgentState)
     agent_builder.add_node("orchestrator", logged_node("agent.orchestrator", partial(orchestrator, llm_with_tools=llm_with_tools)))
     agent_builder.add_node("tools", tool_node)
@@ -40,7 +43,15 @@ def create_agent_graph(llm, tools_list, checkpointer=None):
     agent_builder.add_edge("fallback_response", "collect_answer")
     agent_builder.add_edge("collect_answer", END)
 
-    agent_subgraph = agent_builder.compile()
+    return agent_builder.compile()
+
+
+def create_agent_graph(llm, tools_list, checkpointer=None):
+    llm_with_tools = llm.bind_tools(tools_list)
+    checkpointer = checkpointer or InMemorySaver()
+
+    print("Compiling agent graph...")
+    agent_subgraph = create_agent_subgraph(llm_with_tools, tools_list, llm)
 
     graph_builder = StateGraph(State)
     graph_builder.add_node("summarize_history", logged_node("main.summarize_history", partial(summarize_history, llm=llm)))

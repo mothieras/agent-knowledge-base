@@ -5,7 +5,8 @@ from .graph_state import State, AgentState
 from .schemas import QueryAnalysis
 from .prompts import *
 from utils import estimate_context_tokens
-from config import BASE_TOKEN_THRESHOLD, CHILD_CHUNK_SEPARATOR, MAIN_HISTORY_MESSAGES_TO_KEEP, TOKEN_GROWTH_FACTOR
+from db.retrieval import RetrievalHit
+from config import BASE_TOKEN_THRESHOLD, MAIN_HISTORY_MESSAGES_TO_KEEP, TOKEN_GROWTH_FACTOR
 
 if MAIN_HISTORY_MESSAGES_TO_KEEP < 2:
     raise ValueError("MAIN_HISTORY_MESSAGES_TO_KEEP must be at least 2.")
@@ -23,21 +24,14 @@ def _name_internal_message(message, name):
     """Tag a subgraph-only message so it is not treated as chat history."""
     return message.model_copy(update={"name": name})
 
-def _retrieval_contexts(messages) -> list[str]:
+def _retrieval_contexts(messages) -> list[RetrievalHit]:
     contexts = []
-    ignored_prefixes = (
-        "NO_RELEVANT_CHUNKS",
-        "NO_PARENT_DOCUMENT",
-        "RETRIEVAL_ERROR:",
-        "PARENT_RETRIEVAL_ERROR:",
-    )
     for message in messages:
         if not isinstance(message, ToolMessage):
             continue
-        content = str(message.content).strip()
-        if content and not content.startswith(ignored_prefixes):
-            parts = content.split(CHILD_CHUNK_SEPARATOR) if message.name == "search_child_chunks" else [content]
-            contexts.extend(part for part in parts if part)
+        artifact = getattr(message, "artifact", None)
+        if isinstance(artifact, list):
+            contexts.extend(h for h in artifact if isinstance(h, RetrievalHit))
     return list(dict.fromkeys(contexts))
 
 def _format_conversation(messages) -> str:

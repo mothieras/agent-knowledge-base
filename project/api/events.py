@@ -3,6 +3,7 @@ import uuid
 
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 
+from db.retrieval import RetrievalHit
 from schema import (
     AnswerTokenEvent,
     ChatMessage,
@@ -30,25 +31,30 @@ def _sse(event) -> str:
     return f"data: {json.dumps(event.model_dump(), ensure_ascii=False)}\n\n"
 
 
+def _format_hit(hit: RetrievalHit) -> str:
+    return (
+        f"Parent ID: {hit.parent_id}\n"
+        f"File Name: {hit.source}\n"
+        f"Content: {hit.content.strip()}"
+    )
+
+
 def _extract_sources_contexts(state_values) -> tuple[list[str], list[str]]:
     contexts: list[str] = []
-    seen: set[str] = set()
-    for ans in state_values.get("agent_answers", []):
-        for ctx in ans.get("contexts", []):
-            if ctx not in seen:
-                seen.add(ctx)
-                contexts.append(ctx)
-
+    ctx_seen: set[str] = set()
     sources: list[str] = []
     src_seen: set[str] = set()
-    for ctx in contexts:
-        for line in str(ctx).splitlines():
-            line = line.strip()
-            if line.startswith("File Name:"):
-                name = line[len("File Name:"):].strip()
-                if name and name not in src_seen:
-                    src_seen.add(name)
-                    sources.append(name)
+    for ans in state_values.get("agent_answers", []):
+        for hit in ans.get("contexts", []):
+            if not isinstance(hit, RetrievalHit):
+                continue
+            block = _format_hit(hit)
+            if block not in ctx_seen:
+                ctx_seen.add(block)
+                contexts.append(block)
+            if hit.source and hit.source not in src_seen:
+                src_seen.add(hit.source)
+                sources.append(hit.source)
     return sources, contexts
 
 

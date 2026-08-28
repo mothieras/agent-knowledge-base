@@ -4,6 +4,8 @@ import pytest
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 
+from db.retrieval import RetrievalHit
+
 
 class _Snap:
     def __init__(self, next=(), values=None):
@@ -43,7 +45,7 @@ def stub_normal():
         ],
         final_values={
             "messages": [AIMessage(content="Hello world")],
-            "agent_answers": [{"contexts": ["Parent ID: p1\nFile Name: redis.md\nContent: cache"]}],
+            "agent_answers": [{"contexts": [RetrievalHit(source="redis.md", parent_id="p1", content="cache")]}],
             "rewrittenQuestions": ["q1"],
         },
     )

@@ -10,7 +10,7 @@ class DocumentManager:
         self.markdown_dir = Path(config.MARKDOWN_DIR)
         self.markdown_dir.mkdir(parents=True, exist_ok=True)
         
-    def add_documents(self, document_paths, progress_callback=None, source_names=None):
+    def add_documents(self, document_paths, progress_callback=None, source_names=None, doc_meta=None):
         if not document_paths:
             return 0, 0
             
@@ -47,6 +47,7 @@ class DocumentManager:
                 parent_chunks, child_chunks = self.rag_system.chunker.create_chunks_single(
                     md_path,
                     source_name=source_name or source_path.name,
+                    doc_meta=(doc_meta or {}).get(doc_path),
                 )
                 
                 if not child_chunks:

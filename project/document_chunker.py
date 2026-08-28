@@ -47,22 +47,22 @@ class DocumentChunker:
             parent_chunks, child_chunks = self.create_chunks_single(doc_path)
             all_parent_chunks.extend(parent_chunks)
             all_child_chunks.extend(child_chunks)
-        
+
         return all_parent_chunks, all_child_chunks
 
-    def create_chunks_single(self, md_path, source_name=None):
+    def create_chunks_single(self, md_path, source_name=None, doc_meta=None):
         doc_path = Path(md_path)
         source_name = source_name or f"{doc_path.stem}.pdf"
-        
+
         with open(doc_path, "r", encoding="utf-8") as f:
             parent_chunks = self.__parent_splitter.split_text(f.read())
-        
+
         merged_parents = self.__merge_small_parents(parent_chunks)
         split_parents = self.__split_large_parents(merged_parents)
         cleaned_parents = self.__clean_small_chunks(split_parents)
         if any(len(chunk.page_content) > self.__max_parent_size for chunk in cleaned_parents):
             raise ValueError("Parent chunking produced a chunk larger than MAX_PARENT_SIZE.")
-        
+
         all_parent_chunks, all_child_chunks = [], []
         self.__create_child_chunks(
             all_parent_chunks,
@@ -70,6 +70,7 @@ class DocumentChunker:
             cleaned_parents,
             doc_path,
             source_name,
+            doc_meta,
         )
         return all_parent_chunks, all_child_chunks
 
@@ -181,10 +182,13 @@ class DocumentChunker:
         
         return cleaned
 
-    def __create_child_chunks(self, all_parent_pairs, all_child_chunks, parent_chunks, doc_path, source_name):
+    def __create_child_chunks(self, all_parent_pairs, all_child_chunks, parent_chunks, doc_path, source_name, doc_meta=None):
         for i, p_chunk in enumerate(parent_chunks):
             parent_id = f"{doc_path.stem}_p{i}"
-            p_chunk.metadata.update({"source": source_name, "parent_id": parent_id})
-            
+            chunk_meta = {"source": source_name, "parent_id": parent_id}
+            if doc_meta:
+                chunk_meta.update(doc_meta)
+            p_chunk.metadata.update(chunk_meta)
+
             all_parent_pairs.append((parent_id, p_chunk))
             all_child_chunks.extend(self.__child_splitter.split_documents([p_chunk]))

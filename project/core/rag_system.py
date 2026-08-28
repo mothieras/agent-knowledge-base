@@ -4,6 +4,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 import config
 from db.vector_db_manager import VectorDbManager
 from db.parent_store_manager import ParentStoreManager
+from db.retrieval import QdrantRetriever
 from document_chunker import DocumentChunker
 from rag_agent.tools import ToolFactory
 from rag_agent.graph import create_agent_graph
@@ -26,6 +27,7 @@ class RAGSystem:
     def initialize(self):
         self.vector_db.create_collection(self.collection_name)
         collection = self.vector_db.get_collection(self.collection_name)
+        retriever = QdrantRetriever(collection, self.parent_store)
 
         llm = ChatOpenAI(
             model=config.LLM_MODEL,
@@ -33,7 +35,7 @@ class RAGSystem:
             api_key=config.LLM_API_KEY,
             temperature=config.LLM_TEMPERATURE,
         )
-        tools = ToolFactory(collection, record_retrieval=self.record_retrieval).create_tools()
+        tools = ToolFactory(retriever, record_retrieval=self.record_retrieval).create_tools()
         self.agent_graph = create_agent_graph(llm, tools, self.checkpointer)
 
     def get_config(self, thread_id=None, **configurable):

@@ -26,6 +26,7 @@ def main():
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     paths = []
     source_names = {}
+    doc_meta = {}
     for doc in manifest["documents"]:
         if doc["processing"] == "copied":
             p = REPO_ROOT / "data" / "interview_docs" / doc["local_rel"]
@@ -37,13 +38,21 @@ def main():
         p = str(p)
         paths.append(p)
         source_names[p] = doc["source"]
+        doc_meta[p] = {
+            "version": doc.get("version"),
+            "effective_date": doc.get("effective_date"),
+            "expired_date": doc.get("expired_date"),
+            "priority": doc.get("priority"),
+            "topic": doc.get("topic"),
+            "doc_type": doc.get("doc_type"),
+        }
 
     rs = RAGSystem()
     rs.initialize()
     dm = DocumentManager(rs)
     print(f"[clear] 清空并重建 collection...")
     dm.clear_all()
-    added, skipped = dm.add_documents(paths, source_names=source_names)
+    added, skipped = dm.add_documents(paths, source_names=source_names, doc_meta=doc_meta)
     print(f"[ingest] added={added} skipped={skipped} (共 {len(paths)} 篇)")
     if added != len(paths):
         print("错误: 存在 skipped，入库不完整", file=sys.stderr)
