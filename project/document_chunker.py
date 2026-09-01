@@ -18,8 +18,9 @@ class DocumentChunker:
             strip_headers=False
         )
         self.__child_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=config.CHILD_CHUNK_SIZE, 
-            chunk_overlap=config.CHILD_CHUNK_OVERLAP
+            chunk_size=config.CHILD_CHUNK_SIZE,
+            chunk_overlap=config.CHILD_CHUNK_OVERLAP,
+            add_start_index=True,
         )
         self.__min_parent_size = config.MIN_PARENT_SIZE
         self.__max_parent_size = config.MAX_PARENT_SIZE
@@ -191,4 +192,8 @@ class DocumentChunker:
             p_chunk.metadata.update(chunk_meta)
 
             all_parent_pairs.append((parent_id, p_chunk))
-            all_child_chunks.extend(self.__child_splitter.split_documents([p_chunk]))
+            children = self.__child_splitter.split_documents([p_chunk])
+            for j, child in enumerate(children):
+                # chunk_id 是 provenance 主键（Qdrant point id 仍为 UUID，只作存储细节）
+                child.metadata["chunk_id"] = f"{parent_id}_c{j}"
+            all_child_chunks.extend(children)

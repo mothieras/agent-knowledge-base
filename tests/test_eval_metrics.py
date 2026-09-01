@@ -14,7 +14,10 @@ def test_retrieval_metrics_exclude_hitl_clarification_items():
             "expected_sources": ["source.md"],
         },
     ]
-    hits = {1: [("source.md", "content")], 2: []}
+    hits = {
+        1: [{"source": "source.md", "content": "content", "version": "v1", "chunk_id": "doc_p0_c0"}],
+        2: [],
+    }
 
     result = retrieval_metrics(items, hits)
 

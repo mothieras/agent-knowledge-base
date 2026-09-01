@@ -16,6 +16,10 @@ def _sample_hits():
             effective_date=date(2026, 7, 19),
             expired_date=None,
             priority=10,
+            chunk_id="p0_c0",
+            span_start=42,
+            span_end=64,
+            retrieval_channel="hybrid",
         ),
         RetrievalHit(source="qdrant.md", parent_id="p1", content="hnsw index"),
     ]
@@ -32,6 +36,9 @@ def test_retrievalhit_round_trips_typed_through_serde():
     assert restored[0] == hits[0]
     assert restored[0].effective_date == date(2026, 7, 19)
     assert restored[0].version == "04b8ea2"
+    assert restored[0].chunk_id == "p0_c0"
+    assert (restored[0].span_start, restored[0].span_end) == (42, 64)
+    assert restored[0].retrieval_channel == "hybrid"
     assert restored[1] == hits[1]
 
 

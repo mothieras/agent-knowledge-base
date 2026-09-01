@@ -15,7 +15,21 @@ import config
 PRICE_IN_PER_M = 0.28
 PRICE_OUT_PER_M = 1.68
 
-EXPIRED_SOURCES = set()
+# data/fixtures/manifest.json 中 expired_date 非空的受治理 fixture 源；
+# golden set 30 题不应命中它们，expired_hit_items 是 M3 过滤门禁的前置信号
+EXPIRED_SOURCES = {
+    "fixtures/api_rate_limit_policy_v1.md",
+    "fixtures/data_retention_policy_v1.md",
+}
+
+# 全部受治理 fixture 源：golden set 30 题全部指向第三方语料，
+# 任何 fixture 命中都是跨域污染信号（fixture_hit_items）
+FIXTURE_SOURCES = {
+    "fixtures/api_rate_limit_policy_v1.md",
+    "fixtures/api_rate_limit_policy_v2.md",
+    "fixtures/data_retention_policy_v1.md",
+    "fixtures/data_retention_policy_v2.md",
+}
 
 
 def build_judge_llm() -> ChatOpenAI:
@@ -37,6 +51,7 @@ def retrieval_metrics(items, hits_by_item, k_values=(5, 7)) -> dict:
     mrr_vals = []
     section_total = section_hit = 0
     expired_hit_items = 0
+    fixture_hit_items = 0
     scored = 0
 
     for item in items:
@@ -49,7 +64,7 @@ def retrieval_metrics(items, hits_by_item, k_values=(5, 7)) -> dict:
         expected_files = {_strip_anchor(s) for s in expected}
         anchored = {_strip_anchor(s): s.split("#", 1)[1] for s in expected if "#" in s}
         hits = hits_by_item.get(item["id"], [])
-        hit_sources = [h[0] for h in hits]
+        hit_sources = [h["source"] for h in hits]
 
         # Recall@K / Hit Rate
         for k in k_values:
@@ -66,18 +81,20 @@ def retrieval_metrics(items, hits_by_item, k_values=(5, 7)) -> dict:
         # Section bonus
         for file, section in anchored.items():
             section_total += 1
-            for src, content in hits:
-                if src == file and any(
+            for h in hits:
+                if h["source"] == file and any(
                     section in line
-                    for line in content.splitlines()
+                    for line in h["content"].splitlines()
                     if line.lstrip().startswith("#")
                 ):
                     section_hit += 1
                     break
 
-        # expired_hits 信号
+        # expired / fixture 泄漏信号
         if set(hit_sources) & EXPIRED_SOURCES:
             expired_hit_items += 1
+        if set(hit_sources) & FIXTURE_SOURCES:
+            fixture_hit_items += 1
 
     return {
         "scored_items": scored,
@@ -86,6 +103,7 @@ def retrieval_metrics(items, hits_by_item, k_values=(5, 7)) -> dict:
         "hit_rate": sum(1 for v in recall_at[min(k_values)] if v) / len(recall_at[min(k_values)]) if recall_at[min(k_values)] else 0.0,
         "section_hit_rate": section_hit / section_total if section_total else None,
         "expired_hit_items": expired_hit_items,
+        "fixture_hit_items": fixture_hit_items,
     }
 
 

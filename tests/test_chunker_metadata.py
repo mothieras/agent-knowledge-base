@@ -46,3 +46,32 @@ def test_create_chunks_single_omits_doc_meta_when_none(tmp_path):
     assert child_meta["source"] == "src/doc.md"
     assert "version" not in child_meta
     assert "priority" not in child_meta
+
+
+def test_children_carry_unique_chunk_id_and_exact_span(tmp_path):
+    md = tmp_path / "doc.md"
+    md.write_text("# Title\n\n" + ("body text " * 300), encoding="utf-8")
+
+    chunker = DocumentChunker()
+    parents, children = chunker.create_chunks_single(md, source_name="src/doc.md")
+
+    assert len(children) > 1
+    chunk_ids = [c.metadata["chunk_id"] for c in children]
+    assert len(set(chunk_ids)) == len(chunk_ids)
+
+    parent_by_id = {pid: doc for pid, doc in parents}
+    children_by_parent = {}
+    for c in children:
+        children_by_parent.setdefault(c.metadata["parent_id"], []).append(c)
+
+    for pid, group in children_by_parent.items():
+        # 枚举顺序即文档顺序：chunk_id 后缀与 start_index 单调一致
+        assert [c.metadata["chunk_id"] for c in group] == [f"{pid}_c{j}" for j in range(len(group))]
+        starts = [c.metadata["start_index"] for c in group]
+        assert starts == sorted(starts)
+
+        parent = parent_by_id[pid]
+        for c in group:
+            start = c.metadata["start_index"]
+            # add_start_index 用 find 定位起点，child 是 parent 的精确子串
+            assert parent.page_content[start:start + len(c.page_content)] == c.page_content

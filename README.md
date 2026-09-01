@@ -49,6 +49,7 @@
 - LangGraph 主图负责历史摘要、查询改写、澄清和答案聚合。
 - 子图负责工具调用、父子块检索、上下文压缩和 fallback。
 - Qdrant 以本地模式保存 dense 与 FastEmbed BM25 sparse vectors，并使用 hybrid retrieval。
+- 检索证据走类型化 `RetrievalHit` 契约（`db/retrieval.py`）：`source`/`version`/有效期/`priority` 等 manifest 元数据 + `chunk_id` + 父文本精确 `span` 切片 + `retrieval_channel`，流经 Agent state、SSE 事件与 eval，全程无字符串解析。`Retriever` 协议由 `QdrantRetriever`（prod）与 `InMemoryRetriever`（test）两个适配器坐实。
 - `InMemorySaver` 保存单进程内会话；API 接受显式 `thread_id` 继续多轮对话。
 - 可选 Langfuse callback 记录图节点、LLM 和工具调用。
 
@@ -65,6 +66,8 @@
 - 知识图谱增强 RAG
 
 每条语料记录固定来源 URL、许可、topic、revision 和 SHA-256；同步脚本会删除已退出清单的陈旧文件。规则见 [`data/README.md`](data/README.md)。
+
+另有项目自有的受治理版本冲突 fixture（[`data/fixtures/`](data/fixtures/)，MIT 许可）：两对虚构政策文档各含一个已过期与一个当前有效版本，入库进同一 collection，用于验证 manifest 元数据（version/有效期/priority）全链路传播，并为版本冲突评测提供素材。
 
 ### API 协议
 
@@ -83,7 +86,7 @@ answer_token · tool_call · tool_result · system_status
 clarification · done · error
 ```
 
-`done` 事件携带最终答案、改写后的子问题、检索上下文及从上下文中解析出的候选来源文件名。
+`done` 事件携带最终答案、改写后的子问题、检索上下文及候选来源文件名（取自结构化 `RetrievalHit`，非文本解析）。
 
 ## 服务化（FastAPI + SSE）
 
@@ -203,20 +206,21 @@ python run_eval.py
 
 ### 已记录基线
 
-2026-08-23 `all-in-rag` 公开语料基线是当前基准：完整报告见 [`eval/reports/baseline-all-in-rag-2026-08-23.md`](eval/reports/baseline-all-in-rag-2026-08-23.md)，per-item 数据见 [`baseline-all-in-rag-2026-08-23.jsonl`](eval/reports/baseline-all-in-rag-2026-08-23.jsonl)。30 条全部执行，0 错误、0 SKIP；检索指标只统计实际进入检索流程的 20 题，5 条 HITL 澄清题由 clarification 指标单独评估。
+当前基准是 **2026-09-01 基线**（stage 3 收尾后重跑，语料 14 篇第三方 + 4 篇受治理 fixture，索引 354 points）。完整报告见 [`eval/reports/baseline-2026-09-01.md`](eval/reports/baseline-2026-09-01.md)，per-item 数据见 [`baseline-2026-09-01.jsonl`](eval/reports/baseline-2026-09-01.jsonl)。30 条全部执行，0 错误、0 SKIP；检索指标只统计实际进入检索流程的 20 题，5 条 HITL 澄清题由 clarification 指标单独评估。历史基准：[2026-08-28](eval/reports/baseline-2026-08-28.md)（stage 2 收尾，14 篇纯第三方语料）、[2026-08-23](eval/reports/baseline-all-in-rag-2026-08-23.md)（M0 冻结）。
 
-| 指标 | 结果 |
-|---|---:|
-| Recall@5 / Recall@7 | 1.000 / 1.000 |
-| MRR | 0.900 |
-| Faithfulness | 0.938 |
-| Answer relevancy | 0.906 |
-| Context precision / recall | 0.690 / 0.908 |
-| Refusal recall / precision | 0.800 / 0.840 |
-| Clarification rate | 0.600 |
-| Latency P50 / P95 | 14.65s / 21.89s |
+| 指标 | 2026-09-01 | 2026-08-28 |
+|---|---:|---:|
+| Recall@5 / Recall@7 | 1.000 / 1.000 | 1.000 / 1.000 |
+| MRR | 0.975 | 0.975 |
+| expired/fixture 泄漏题数 | 0 / 0 | 0 / n/a |
+| Faithfulness | 0.895 | 0.943 |
+| Answer relevancy | 0.909 | 0.882 |
+| Context precision / recall | 0.679 / 0.908 | 0.761 / 1.000 |
+| Refusal recall / precision | 1.000 / 0.840 | 1.000 / 0.880 |
+| Clarification rate | 0.800 | 0.600 |
+| Latency P50 / P95 | 15.11s / 24.85s | 14.99s / 27.03s |
 
-保留偏低指标是刻意的：当前主要缺口是显式拒答、澄清问题覆盖度和版本过滤。Recall 1.000 也只代表这套固定语料与 golden set，不是对开放问题的泛化承诺。
+检索层（stage 3 真正触碰的路径）与泄漏信号完全持平；生成层波动经复验为 judge 采样噪声与索引重建后的轨迹漂移（对两轮答案独立重打分 faithfulness 0.950 vs 0.956 持平），详见报告「已知局限」。保留偏低指标是刻意的：显式拒答、澄清覆盖、版本过滤仍是路线图工作。Recall 1.000 也只代表这套固定语料与 golden set，不是对开放问题的泛化承诺。
 
 ## 测试
 
@@ -237,8 +241,12 @@ python -m pytest tests/ -q
 - FastAPI readiness、invoke 与 stream contract
 - token、工具调用、澄清和 done 事件映射
 - LangGraph 默认与注入 checkpointer 的编译
+- `RetrievalHit` 的 msgpack serde 往返（checkpointer 契约）
+- 检索路径（search→compress→aggregate）与 chunker metadata/chunk_id/span
+- 受治理 fixture 的静态契约（active/expired 配对语义）
+- 真实本地索引集成测试：`skipif` 本地未入库，验证 metadata 全链路传播与 `parent.content[span_start:span_end] == hit.content` 精确反查（fresh clone 自动跳过）
 
-这些测试通过 stub 隔离真实 LLM 与 Qdrant，属于服务契约和 graph composition 测试，不等同于端到端评测；真实模型行为由 `eval/` 单独记录。
+除最后两类外，测试通过 stub 隔离真实 LLM 与 Qdrant，属于服务契约和 graph composition 测试，不等同于端到端评测；真实模型行为由 `eval/` 单独记录。
 
 ## 仓库结构
 
@@ -264,16 +272,16 @@ notebooks/         upstream learning notebooks
 
 - 中文分词 BM25、自定义 RRF 与 reranker
 - 显式拒答路由
-- 按版本/有效期过滤检索结果
+- 按版本/有效期过滤检索结果（元数据已全链路传播到 `RetrievalHit`，过滤逻辑待 M3 作为 correctness 门禁落地）
 - PostgresSaver 持久会话
 - 认证、租户隔离、限流、TLS 和生产级 CORS
-- 可核验的逐句引用；当前 `sources` 只是从检索上下文解析出的候选文件名
+- 可核验的逐句引用；`sources` 已来自结构化 `RetrievalHit`（非文本解析），但 span 级 citation 尚未进入 API 响应（M4）
 
 ### 下一步
 
 1. 固定评测契约，让报告绑定代码、语料、索引、模型与 prompt。
-2. 建立结构化 `RetrievalHit`，打通 manifest metadata、chunk/span 与索引版本。
-3. 先扩展并冻结有区分度的检索挑战集，再通过消融选择中文 sparse、fusion 和 reranker 策略。
+2. ~~建立结构化 `RetrievalHit`，打通 manifest metadata、chunk/span 与索引版本~~——M1 已完成（stage 1–3）：类型化命中 + `chunk_id`/精确 span/`retrieval_channel` + 受治理 active/expired fixture + 真实索引集成测试。
+3. 先扩展并冻结有区分度的检索挑战集（M2：扩题集、补 qrels、冻结 `acceptance.yaml`），再通过消融选择中文 sparse、fusion 和 reranker 策略。
 4. 在检索证据稳定后实现显式拒答、真实多轮澄清和可核验引用。
 5. 最后稳定服务契约并完成私有部署；严格阶段与退出条件见 [`ROADMAP.md`](ROADMAP.md)。
 

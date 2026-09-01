@@ -30,6 +30,7 @@ import metrics as eval_metrics
 GOLDEN_SET = Path(__file__).resolve().parent / "golden_set.jsonl"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = REPO_ROOT / "data" / "manifest.json"
+FIXTURES_MANIFEST = REPO_ROOT / "data" / "fixtures" / "manifest.json"
 
 
 def git_commit() -> str:
@@ -44,7 +45,7 @@ def git_commit() -> str:
 
 
 def manifest_hash() -> str:
-    """manifest.json + 其引用语料文件内容的 sha256（索引由 manifest 驱动）。"""
+    """manifest.json + fixtures manifest + 其引用语料文件内容的 sha256（索引由两份 manifest 驱动）。"""
     try:
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
         h = hashlib.sha256()
@@ -57,6 +58,9 @@ def manifest_hash() -> str:
             else:
                 continue
             h.update(p.read_bytes())
+        h.update(FIXTURES_MANIFEST.read_bytes())
+        for doc in json.loads(FIXTURES_MANIFEST.read_text(encoding="utf-8"))["documents"]:
+            h.update((FIXTURES_MANIFEST.parent / doc["file"]).read_bytes())
         return h.hexdigest()[:16]
     except Exception as e:
         return f"n/a ({type(e).__name__})"
@@ -134,7 +138,13 @@ def run_one(rs, item: dict) -> dict:
                 continue
             seen.add(hit_key)
             contexts.append(f"Parent ID: {c.parent_id}\nFile Name: {c.source}\nContent: {c.content.strip()}")
-            retrieval_hits.append(hit_key)
+            # 结构化 provenance artifact：M2 qrels / 版本分析直接吃这个，不再回头解析文本
+            retrieval_hits.append({
+                "source": c.source,
+                "content": c.content,
+                "version": c.version,
+                "chunk_id": c.chunk_id,
+            })
 
     return {
         "id": item["id"],
@@ -196,6 +206,7 @@ def render_report(results: list, golden_items: list, gen_scores: dict, retrieval
         f"| Hit Rate | {retrieval['hit_rate']:.3f} |",
         f"| section_hit_rate | {retrieval['section_hit_rate'] if retrieval['section_hit_rate'] is not None else 'n/a'} |",
         f"| expired_hit_items | {retrieval['expired_hit_items']} |",
+        f"| fixture_hit_items | {retrieval['fixture_hit_items']} |",
         "",
         "",
     ]
@@ -216,10 +227,10 @@ def render_report(results: list, golden_items: list, gen_scores: dict, retrieval
         "",
         "| 指标 | 值 |",
         "|---|---|",
-        f"| faithfulness | {gen_scores['faithfulness'] if gen_scores['faithfulness'] is not None else 'n/a'} |",
-        f"| answer_relevancy | {gen_scores['answer_relevancy'] if gen_scores['answer_relevancy'] is not None else 'n/a'} |",
-        f"| context_precision | {gen_scores['context_precision'] if gen_scores['context_precision'] is not None else 'n/a'} |",
-        f"| context_recall | {gen_scores['context_recall'] if gen_scores['context_recall'] is not None else 'n/a'} |",
+        f"| faithfulness | {gen_scores['faithfulness']:.3f} |" if gen_scores['faithfulness'] is not None else "| faithfulness | n/a |",
+        f"| answer_relevancy | {gen_scores['answer_relevancy']:.3f} |" if gen_scores['answer_relevancy'] is not None else "| answer_relevancy | n/a |",
+        f"| context_precision | {gen_scores['context_precision']:.3f} |" if gen_scores['context_precision'] is not None else "| context_precision | n/a |",
+        f"| context_recall | {gen_scores['context_recall']:.3f} |" if gen_scores['context_recall'] is not None else "| context_recall | n/a |",
         "",
         "## 拒答 / 澄清",
         "",

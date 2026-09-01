@@ -2,10 +2,34 @@ from unittest.mock import MagicMock
 
 from langchain_core.messages import AIMessage
 
-from db.retrieval import RetrievalHit
+from db.retrieval import RetrievalHit, hit_from_stored
 from rag_agent.graph import create_agent_subgraph
 from rag_agent.tools import ToolFactory
 from fixtures.in_memory_retriever import InMemoryRetriever
+
+
+def test_hit_from_stored_computes_span_and_coerces_ints():
+    hit = hit_from_stored(
+        "hello world",
+        {
+            "source": "a.md",
+            "parent_id": "a_p0",
+            "chunk_id": "a_p0_c1",
+            "start_index": 7,
+            "priority": "10",  # JSON 往返可能给出字符串
+        },
+    )
+    assert hit.span_start == 7
+    assert hit.span_end == 18  # start + len(content)
+    assert hit.priority == 10
+    assert hit.chunk_id == "a_p0_c1"
+    assert hit.span_end - hit.span_start == len(hit.content)
+
+
+def test_hit_from_stored_without_start_index_has_no_span():
+    hit = hit_from_stored("x", {"source": "a.md", "parent_id": "a_p0"})
+    assert hit.span_start is None
+    assert hit.span_end is None
 
 
 def _make_retriever():

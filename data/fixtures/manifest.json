@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "origin": "project-owned",
+  "license": "MIT",
+  "description": "受治理版本冲突 fixture：项目自有的虚构公司政策文档（星辰科技为虚构主体），用于验证 manifest metadata 全链路传播与版本冲突评测（ROADMAP M1/M2）。内容与第三方 RAG 语料刻意异域，避免污染公开语料基线的检索 trace。本清单不参与 data/sync_sources.py 的第三方语料 SHA 治理。",
+  "documents": [
+    {
+      "source": "fixtures/api_rate_limit_policy_v1.md",
+      "file": "api_rate_limit_policy_v1.md",
+      "doc_type": "governed_fixture",
+      "topic": "fixture_api_policy",
+      "version": "v1",
+      "effective_date": "2026-01-01",
+      "expired_date": "2026-06-30",
+      "priority": 10
+    },
+    {
+      "source": "fixtures/api_rate_limit_policy_v2.md",
+      "file": "api_rate_limit_policy_v2.md",
+      "doc_type": "governed_fixture",
+      "topic": "fixture_api_policy",
+      "version": "v2",
+      "effective_date": "2026-07-01",
+      "expired_date": null,
+      "priority": 20
+    },
+    {
+      "source": "fixtures/data_retention_policy_v1.md",
+      "file": "data_retention_policy_v1.md",
+      "doc_type": "governed_fixture",
+      "topic": "fixture_data_retention",
+      "version": "v1",
+      "effective_date": "2025-07-01",
+      "expired_date": "2026-06-30",
+      "priority": 10
+    },
+    {
+      "source": "fixtures/data_retention_policy_v2.md",
+      "file": "data_retention_policy_v2.md",
+      "doc_type": "governed_fixture",
+      "topic": "fixture_data_retention",
+      "version": "v2",
+      "effective_date": "2026-07-01",
+      "expired_date": null,
+      "priority": 20
+    }
+  ],
+  "expected_hits": [
+    {
+      "query": "星辰科技 API 免费层每分钟最多能调用多少次",
+      "topic": "fixture_api_policy",
+      "active_source": "fixtures/api_rate_limit_policy_v2.md",
+      "expired_source": "fixtures/api_rate_limit_policy_v1.md",
+      "answer_hint": "免费层每分钟 120 次（v2，2026-07-01 起生效）；v1 为 60 次，已于 2026-06-30 过期"
+    },
+    {
+      "query": "星辰科技的审计日志保留多久",
+      "topic": "fixture_data_retention",
+      "active_source": "fixtures/data_retention_policy_v2.md",
+      "expired_source": "fixtures/data_retention_policy_v1.md",
+      "answer_hint": "审计日志保留 365 天（v2）；v1 为 180 天，已于 2026-06-30 过期"
+    },
+    {
+      "query": "星辰科技客户注销后多久数据会被清除",
+      "topic": "fixture_data_retention",
+      "active_source": "fixtures/data_retention_policy_v2.md",
+      "expired_source": "fixtures/data_retention_policy_v1.md",
+      "answer_hint": "注销后 15 天内清除（v2）；v1 为 30 天，已于 2026-06-30 过期"
+    }
+  ]
+}

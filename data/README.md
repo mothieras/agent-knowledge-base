@@ -24,7 +24,16 @@ data/
   processed/       需要转换时生成的 Markdown
   interview_docs/  实际入库语料（Markdown，保持来源目录结构）
   manifest.json    来源、许可、版本、topic 与完整性清单
+  fixtures/        项目自有的受治理版本冲突 fixture（见下）
 ```
+
+## 受治理 fixture
+
+[`fixtures/`](fixtures/) 是项目自有、随仓库 MIT 许可分发的虚构政策文档（"星辰科技"为虚构主体），与第三方语料刻意异域。当前两对 active/expired 版本（API 限流政策、数据保留政策），用于验证 manifest metadata（version/effective_date/expired_date/priority）全链路传播，并为版本冲突评测（ROADMAP M2）提供素材。
+
+- 由 [`fixtures/manifest.json`](fixtures/manifest.json) 独立治理，不参与 `sync_sources.py` 的第三方 SHA 同步与清理。
+- 入库时与第三方语料进同一 collection（`ingest_corpus.py` 自动合并）。
+- 静态契约由 `tests/test_fixtures.py` 守护：每个 topic 恰一 expired 一 active、active 优先级更高且生效日期接续 expired 失效日期。
 
 ## 同步
 
