@@ -1,8 +1,0 @@
-__pycache__/
-*.pyc
-.env
-.venv/
-qdrant_db/
-parent_store/
-markdown_docs/
-eval/reports/
