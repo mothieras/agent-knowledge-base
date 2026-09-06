@@ -5,7 +5,7 @@ import logging
 sys.path.insert(0, os.path.dirname(__file__))
 
 from dotenv import load_dotenv
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 
 # Suppress OTel "Failed to detach context" warning caused by generator/context interaction.
 # Tracing is unaffected.

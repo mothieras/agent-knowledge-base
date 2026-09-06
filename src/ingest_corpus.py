@@ -1,7 +1,7 @@
 """T3 入库脚本：clear_all 重建 Qdrant，按 manifest.json + data/fixtures/manifest.json 入库全部语料。
 
-前提: project/.env 已配置 DEEPSEEK_API_KEY；已先运行 data/sync_sources.py。
-运行: cd project && uv run --python ../.venv/bin/python ingest_corpus.py
+前提: 根目录 .env 已配置 DEEPSEEK_API_KEY；已先运行 data/sync_sources.py。
+运行: cd src && uv run --python ../.venv/bin/python ingest_corpus.py
 """
 import json
 import os
@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 os.environ.pop("HF_ENDPOINT", None)  # 模型下载走官方 huggingface.co + 本机 SOCKS 代理
 
 from dotenv import load_dotenv
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 
 import config
 from core.rag_system import RAGSystem

@@ -1,6 +1,6 @@
 """真实本地索引集成测试（ROADMAP M1 证据契约）。
 
-前置：本机已运行 `project/ingest_corpus.py`（qdrant_db/ + parent_store/ 存在）。
+前置：本机已运行 `src/ingest_corpus.py`（qdrant_db/ + parent_store/ 存在）。
 fresh clone 无索引时整模块 skip。验证的是真实 embedding + 真实 Qdrant payload
 → RetrievalHit 的全链路 metadata 传播，不打桩。
 """
@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 INDEX_READY = Path(config.QDRANT_DB_PATH).exists() and Path(config.PARENT_STORE_PATH).exists()
 
 pytestmark = pytest.mark.skipif(
-    not INDEX_READY, reason="本地索引未构建：先运行 cd project && python ingest_corpus.py"
+    not INDEX_READY, reason="本地索引未构建：先运行 cd src && python ingest_corpus.py"
 )
 
 

@@ -1,6 +1,6 @@
 """T4 评测驱动：golden set 跑当前系统，产出 per-item jsonl + 汇总 md。
 
-前提: project/.env 已配置 DEEPSEEK_API_KEY；语料已 ingest_corpus.py 入库。
+前提: 根目录 .env 已配置 DEEPSEEK_API_KEY；语料已 ingest_corpus.py 入库。
 运行: cd eval && uv run --python ../.venv/bin/python run_eval.py [--limit N] [--outdir reports]
 """
 import argparse
@@ -14,11 +14,11 @@ import time
 from datetime import date
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "project"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 os.environ.pop("HF_ENDPOINT", None)
 
 from dotenv import load_dotenv
-load_dotenv(Path(__file__).resolve().parent.parent / "project" / ".env")
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import HumanMessage

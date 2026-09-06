@@ -27,7 +27,6 @@
 
 - **原作者**：[Giovanni Pasqualino](https://github.com/GiovanniPasq)
 - **上游许可**：MIT；原始版权声明保留在 [`LICENSE`](LICENSE)
-- **上游教学文档**：[`project/README.md`](project/README.md) 与 [`notebooks/`](notebooks/)；其中部分 Ollama-first 用法不代表本 fork 的当前运行方式
 - **当前检索语料**：来自 [`mothieras/all-in-rag`](https://github.com/mothieras/all-in-rag) 固定修订版，遵循 CC BY-NC-SA 4.0，不适用本仓库代码的 MIT License；详见 [`data/THIRD_PARTY_NOTICES.md`](data/THIRD_PARTY_NOTICES.md)
 
 下表明确区分继承能力与本 fork 的工作：
@@ -37,7 +36,7 @@
 | Agent 编排 | LangGraph 主图/子图、查询改写、HITL 澄清、并行子问题、上下文压缩 | DeepSeek JSON mode 适配；checkpointer 作为可注入依赖；服务层按 `thread_id` 隔离请求 |
 | 检索 | 父子分块、Qdrant dense + sparse hybrid retrieval、文件型 parent store | 公开中文 RAG 语料、固定 revision 与哈希校验、来源 metadata、检索 recorder 与分维度评测 |
 | 应用入口 | Gradio 教学应用 | FastAPI `/invoke`、`/stream`、`/history`；独立 HTTP/SSE client；Gradio 改为薄客户端 |
-| 评测 | 通用 evaluation notebook | 30 条领域 golden set、自动评测 runner、基线报告与 badcase 信号 |
+| 评测 | — | 30 条领域 golden set、自动评测 runner、基线报告与 badcase 信号 |
 | 可运行性 | 本地教学项目 | 环境变量驱动的 DeepSeek 配置、smoke script、API/schema/graph 测试 |
 
 完整提交差异也可通过 GitHub 的 [fork compare](https://github.com/GiovanniPasq/agentic-rag-for-dummies/compare/main...mothieras:main) 查看。
@@ -109,11 +108,11 @@ L0  Qdrant hybrid retrieval + parent store + corpus
 
 主要代码入口：
 
-- [`project/api/`](project/api/)：FastAPI 路由、SSE 事件映射与服务依赖
-- [`project/client/`](project/client/)：同步调用与 SSE 消费客户端
-- [`project/core/rag_system.py`](project/core/rag_system.py)：模型、存储、工具和 graph 的 composition root
-- [`project/rag_agent/`](project/rag_agent/)：主图、子图、节点、边与工具
-- [`project/schema/`](project/schema/)：请求、响应和 SSE event schemas
+- [`src/api/`](src/api/)：FastAPI 路由、SSE 事件映射与服务依赖
+- [`src/client/`](src/client/)：同步调用与 SSE 消费客户端
+- [`src/core/rag_system.py`](src/core/rag_system.py)：模型、存储、工具和 graph 的 composition root
+- [`src/rag_agent/`](src/rag_agent/)：主图、子图、节点、边与工具
+- [`src/schema/`](src/schema/)：请求、响应和 SSE event schemas
 
 ## 快速开始
 
@@ -133,10 +132,10 @@ python -m pip install -r requirements.txt
 ### 2. 配置模型
 
 ```bash
-cp project/.env.example project/.env
+cp .env.example .env
 ```
 
-在 `project/.env` 中填写：
+在 `.env` 中填写：
 
 ```dotenv
 DEEPSEEK_API_KEY=sk-...
@@ -145,7 +144,7 @@ LLM_BASE_URL=https://api.deepseek.com
 JUDGE_MODEL=deepseek-chat
 ```
 
-`project/.env` 已被 Git 忽略，不要提交真实密钥。
+`.env` 已被 Git 忽略，不要提交真实密钥。
 
 ### 3. 构建本地索引
 
@@ -155,13 +154,13 @@ JUDGE_MODEL=deepseek-chat
 # 可选：从固定 revision 重新下载并校验公开语料
 python3 data/sync_sources.py
 
-python project/ingest_corpus.py
+python src/ingest_corpus.py
 ```
 
 ### 4. 启动 API
 
 ```bash
-cd project
+cd src
 uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
 
@@ -184,7 +183,7 @@ curl -N http://127.0.0.1:8000/stream \
 另开终端：
 
 ```bash
-cd project
+cd src
 API_URL=http://127.0.0.1:8000 python app.py
 ```
 
@@ -231,7 +230,7 @@ python -m pytest tests/
 CI（`.github/workflows/ci.yml`）在 push/PR 时执行 compile 检查 + 全量 pytest，作为进入 main 的语法与回归门禁。本地等价命令：
 
 ```bash
-python -m compileall -q rag_agent core api db schema client document_chunker.py config.py utils.py  # 在 project/ 下
+python -m compileall -q rag_agent core api db schema client document_chunker.py config.py utils.py  # 在 src/ 下
 python -m pytest tests/ -q
 ```
 
@@ -251,7 +250,7 @@ python -m pytest tests/ -q
 ## 仓库结构
 
 ```text
-project/
+src/
   api/             FastAPI routes + SSE mapping
   client/          HTTP/SSE client
   core/            RAGSystem composition and observability
@@ -263,7 +262,6 @@ project/
 data/              governed corpus + manifest
 eval/              golden set, metrics, runner and reports
 tests/             API/schema/graph tests
-notebooks/         upstream learning notebooks
 ```
 
 ## 当前边界与路线图

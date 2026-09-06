@@ -1,7 +1,7 @@
 """T1 冒烟测试：ingest 一篇公开语料 → 提一个问题 → 打印最终回答。
 
-前提: project/.env 已配置 DEEPSEEK_API_KEY；语料已由 data/sync_sources.py 同步。
-运行: cd project && uv run --python ../.venv/bin/python smoke_test.py
+前提: 根目录 .env 已配置 DEEPSEEK_API_KEY；语料已由 data/sync_sources.py 同步。
+运行: cd src && uv run --python ../.venv/bin/python smoke_test.py
 """
 import os
 import sys
@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 os.environ.pop("HF_ENDPOINT", None)
 
 from dotenv import load_dotenv
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 
 from langchain_core.messages import HumanMessage
 from core.rag_system import RAGSystem

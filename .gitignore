@@ -13,11 +13,6 @@ parent_store/
 .commandcode/
 AGENTS.md
 
-notebooks/output.csv
-
 ragas_*.csv
 rag_evaluation_*.csv
 rag_evaluation_*.png
-notebooks/ragas_*.csv
-notebooks/rag_evaluation_*.csv
-notebooks/rag_evaluation_*.png

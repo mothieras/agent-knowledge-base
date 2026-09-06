@@ -1,3 +1,2 @@
-# Exclude inherited notebooks and corpus fixtures from repository language statistics.
-notebooks/** linguist-vendored
+# Exclude corpus fixtures from repository language statistics.
 data/** linguist-documentation

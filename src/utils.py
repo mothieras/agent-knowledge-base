@@ -10,7 +10,7 @@ from functools import lru_cache
 
 
 def clear_directory_contents(directory: Path) -> None:
-    """Delete everything under directory but not the directory itself (safe for Docker volume / bind mount roots)."""
+    """Delete everything under directory but not the directory itself (callers may mount the directory)."""
     directory = Path(directory)
     if not directory.is_dir():
         return
