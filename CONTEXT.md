@@ -11,7 +11,19 @@
 
 - **受治理 fixture**:`data/fixtures/` 下项目自有的虚构政策文档(两对 active/expired 版本),独立 manifest 治理,不参与第三方语料的 SHA 同步。入库进同一 collection,使版本冲突评测在混合语料上进行;`expected_hits` 注记是 M2 qrels 素材。
 
-## 分阶段落地
+## 新产品术语（设计已定，尚未实现）
+
+范围以 [PRD](docs/PRD.md) 为准，实施方式见 [DESIGN](docs/DESIGN.md)。以下不改变上面 M1 现有类型的完成状态。
+
+- **直接检索**：无需生成模型的 search/原文回查；生成由调用者决定。不是“单图问答”的别名。
+- **普通 RAG / `rag`**：固定检索→组织上下文→生成的 LangGraph 单图，不做 Agent 工具循环。
+- **Agentic RAG / `agentic`**：本项目内部主图＋检索子图；一次请求内可拆解和补查，不代表跨请求会话。
+- **索引快照 / `index_id`**：绑定语料、规范化/分块、模型和产物校验的固定构建；在线只读。与来源版本、编辑修订号不是同一概念。
+- **证据标识 / `evidence_id`**：绑定快照与准确原文片段的公开回查标识；旧快照缺失时不能解析到同名新内容。
+- **单次 decision**：`answered / clarification_required / refused`，都结束本次请求；澄清不是服务器暂停等待同 thread 恢复。
+- **五天演示版**：受控只读资料库＋检索/问答/接入评测；完整共享知识层的身份、公私分区、异步写入和文档历史明确顺延。
+
+## 分阶段落地（M1 历史记录）
 
 - **Stage 1**:`RetrievalHit` + `Retriever` 协议 + `InMemoryRetriever` + 路径测试(search→compress→aggregate 全链路) + chunk 缝隙修(manifest 元数据进 chunk)。先把测试面立起来。
 - **Stage 2**:`QdrantRetriever` + 重接 `tools / nodes / events / eval` 吃 `RetrievalHit`,删除 `CHILD_CHUNK_SEPARATOR` 拼接、`"File Name:"` 解析、`record_retrieval` 旁路。

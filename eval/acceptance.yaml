@@ -1,0 +1,108 @@
+# eval/acceptance.yaml — 五天检索优先演示版评测冻结契约
+# Day 1 冻结：题集/hash、qrels、decision 标签、检索参数、数值门禁。
+# 本文件在任何行为实现前冻结；新行为必须对照本契约消融/晋升。
+# 修订需在 ROADMAP 第 4.3 节记录原因。
+
+version: 1
+frozen_date: "2026-09-07"
+
+# ── 三组数据资产 ──────────────────────────────────────────────
+datasets:
+  golden_set:
+    path: eval/golden_set.jsonl
+    sha256: b14b1caa2423705978a95e4551842591f45b36a1c75d295abc4f6000ddc1ea88
+    lines: 30
+    role: 历史回归资产，历史报告不回写
+  challenge_set:
+    path: eval/challenge_set.jsonl
+    sha256: 2db5a9b49a21011771ef2b109573ebcde2eeb714c00ecc721142240748492542
+    lines: 40
+    role: 检索挑战集（含原 20 条检索计分题 + 20 条新题）
+  audit_subset:
+    path: eval/audit_subset.jsonl
+    sha256: d369d8a70bed027163ba528132685665bf44e00b2283302f7ad29998449e7959
+    lines: 11
+    role: 语义审计子集（≥10 题，两种问答模式都执行）
+
+# ── 语料/索引绑定 ────────────────────────────────────────────
+corpus_binding:
+  manifest_sha256: 95cf616207ef81cb12a8a14832d95b2f2374544e8dc2626f4748896e77e11b7b
+  fixtures_manifest_sha256: 38c4b644b4c361bffc2ba1b434ffc15a20f7eca41b8b841685a6b3bb1057ad30
+  third_party_revision: mothieras/all-in-rag@04b8ea2
+  fixtures: 4 files（2 对 active/expired）
+
+# ── Day 1 基线绑定（行为实现前）───────────────────────────────
+baseline_freezing:
+  git_commit: c6eb42379afd9d1a9974af5bf4b977796bdff6f2
+  run_date: "2026-09-07"
+  report_md_sha256: 9dbe002e0a61d966a5b5175ab737d4d6af6fce98fdd74f84990fc0465ca94cd0
+  peritem_jsonl_sha256: 0af89dc561b4d726c01db6c929c1c67a6fb69b265da419626b39d3e61a5ef35e
+  golden_set_sha256: b14b1caa2423705978a95e4551842591f45b36a1c75d295abc4f6000ddc1ea88
+  baseline_retrieval: {recall_at5: 1.0, recall_at7: 1.0, mrr: 0.975}
+  note: 执行 29 条 / 1 条 OutputParserException 错误（id=21），expired/fixture 泄漏信号 1/1（轨迹漂移，D-06 语义审计门槛下须复核）
+
+# ── 检索参数（实现前冻结）────────────────────────────────────
+retrieval:
+  k_default: 7
+  k_range: [1, 20]
+  top_k_scoring: [5, 7]        # Recall@5 / Recall@7
+  query_max_chars: 2000
+  request_timeout_s: 30
+  score_threshold: 0.2         # 当前 DEFAULT_RETRIEVAL_K 配套阈值
+
+# ── 生成/问答预算（实现前冻结）───────────────────────────────
+generation:
+  llm: deepseek-chat
+  judge_model: deepseek-chat
+  total_timeout_s: 120
+  max_subquestions: 3
+  max_tool_calls: 8
+  max_agent_iterations: 10
+  max_network_retries: 1
+  modes: [rag, agentic]
+
+# ── 检索计分口径 ─────────────────────────────────────────────
+retrieval_scoring:
+  grades: {2: "完全相关（核心依据）", 1: "部分相关（版本冲突旧版）", 0: "不相关"}
+  grade1_policy: 命中计分但不阻止硬负例检测
+  hard_negative_policy: hard_negatives 命中报告泄漏信号，不计入 Recall/MRR
+  source_dedup: 按 source 去重后计名次
+  metrics: [recall@5, recall@7, mrr, source_precision@5, ndcg@5, hit_rate]
+  regression_anchor: 原 20 条检索计分题（ch001-ch020）
+
+# ── decision 冻结 ────────────────────────────────────────────
+decision:
+  labels: [answered, clarification_required, refused]
+  refusal_gates:
+    precision_min: 0.90          # TP/(TP+FP)，以应拒答为正类
+    recall_min: 0.90
+  misrefusal_rate_max: 0.05      # 明确可答题中 refused / 明确可答题数
+  overclarify_rate_max: 0.05     # 明确可答题中 clarification / 明确可答题数
+  zero_denominator: 标 undefined，不能当作通过
+
+# ── 语义审计门禁 ─────────────────────────────────────────────
+semantic_audit:
+  min_items: 10                  # 冻结样本 ≥10 题
+  support_rate_min: 1.0          # 全部可核验知识性声明被引用证据支持
+  key_facts: 必须全部命中
+  unlinked_claims: 计入分母
+  judge: 固定 judge 辅助拆分/初判，维护者复核
+
+# ── 协议/等价性门禁 ──────────────────────────────────────────
+protocol:
+  http_mcp_retrieval_equivalence: 1.0
+  citation_mechanical_validity: 1.0
+  snapshot_misresolution: 0
+  decision_4way_distinction: 1.0   # 无命中/故障/未配置/上游失败 100% 区分
+
+# ── 质量集执行 ───────────────────────────────────────────────
+quality_gate:
+  errors: 0
+  skips: 0
+
+# ── 容量目标（待 Day 4 验证）─────────────────────────────────
+capacity:
+  docs: 100
+  chunks: 10000
+  concurrency: 3
+  min_valid_queries: 100

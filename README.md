@@ -10,6 +10,24 @@
 
 > **状态：活跃原型。** 适合学习、评测和本地演示；当前没有认证、限流、TLS 或持久会话，不能直接暴露到公网。
 
+## 产品方向与本次交付范围（已确认，尚未实施）
+
+新定位是**自托管知识检索服务**：以 RAG 质量和可追溯证据为核心，同一个 FastAPI 应用提供 HTTP 与 MCP；生成模型可选，普通 RAG 单图与 Agentic RAG 双图共用模型配置。
+
+用户已选择 **A：五天检索优先演示版**，主要用于学习与求职展示：
+
+- **本次目标**：受控资料离线导入；无生成模型的 HTTP/MCP 检索与证据回查；单次普通 RAG/双图 Agent 问答及效果、延迟、成本比较；Pi 实际接入；Python/Docker 与现有 Gradio 演示。
+- **明确顺延**：每 Agent 身份与私有分区、公共协作写入、异步入库 API、文档历史和在线版本生命周期。五天版所有获准访问者看到同一固定资料库，不宣传完整共享知识服务。
+- **不纳入新产品**：内置 Web/Chrome 工具、自动记忆学习、跨请求聊天历史或 HITL 恢复、管理后台、OCR。当前已有的会话能力在代码迁移前仍是现状，不代表新产品继续承诺。
+
+文档分工：
+
+- [产品需求 PRD](docs/PRD.md)：已确认目标、五天范围、顺延项和验收场景。
+- [技术设计 DESIGN](docs/DESIGN.md)：分层、模型可选、证据/HTTP/MCP 契约、单次协议与运行限制；均为实施目标。
+- [五天路线计划](ROADMAP.md)：Day 1–5 检查点、评测冻结、发布门禁与后续阶段。
+
+**以下“已实现能力”、当前接口和历史报告仍只描述代码现状。新增设计文档不代表 MCP、独立纯检索、普通 RAG 单图、认证或 Docker 已经交付。**
+
 ## 这个 fork 做什么
 
 原项目很好地展示了 Agentic RAG 的基本结构。本 fork 不把“重写框架”当目标，而是模拟更常见的工程任务：接手一个可运行的开源底座，把它改造成面向具体领域、能够测量、能够通过 API 集成的系统。
@@ -215,9 +233,11 @@ python run_eval.py
 | Faithfulness | 0.895 | 0.943 |
 | Answer relevancy | 0.909 | 0.882 |
 | Context precision / recall | 0.679 / 0.908 | 0.761 / 1.000 |
-| Refusal recall / precision | 1.000 / 0.840 | 1.000 / 0.880 |
+| Refusal recall / legacy specificity（历史非误拒率） | 1.000 / 0.840 | 1.000 / 0.880 |
 | Clarification rate | 0.800 | 0.600 |
 | Latency P50 / P95 | 15.11s / 24.85s | 14.99s / 27.03s |
+
+**历史指标口径提醒**：旧 runner/报告中的 `refusal.precision` 实际计算 `1 - false_refusals / answerable_n`，不是标准拒答 precision；分母含已执行的非 unanswerable 题（包括澄清题）。上表如实标为历史非误拒率，旧报告不回写。新 decision 评测将另行使用 TP/(TP+FP)，不能将二者直接比较。
 
 检索层（stage 3 真正触碰的路径）与泄漏信号完全持平；生成层波动经复验为 judge 采样噪声与索引重建后的轨迹漂移（对两轮答案独立重打分 faithfulness 0.950 vs 0.956 持平），详见报告「已知局限」。保留偏低指标是刻意的：显式拒答、澄清覆盖、版本过滤仍是路线图工作。Recall 1.000 也只代表这套固定语料与 golden set，不是对开放问题的泛化承诺。
 
@@ -262,26 +282,27 @@ src/
 data/              governed corpus + manifest
 eval/              golden set, metrics, runner and reports
 tests/             API/schema/graph tests
+docs/              confirmed PRD, target design and historical roadmap
 ```
 
 ## 当前边界与路线图
 
 ### 尚未作为已完成能力声明
 
-- 中文分词 BM25、自定义 RRF 与 reranker
-- 显式拒答路由
-- 按版本/有效期过滤检索结果（元数据已全链路传播到 `RetrievalHit`，过滤逻辑待 M3 作为 correctness 门禁落地）
-- PostgresSaver 持久会话
-- 认证、租户隔离、限流、TLS 和生产级 CORS
-- 可核验的逐句引用；`sources` 已来自结构化 `RetrievalHit`（非文本解析），但 span 级 citation 尚未进入 API 响应（M4）
+- 生成模型可选的独立检索服务、MCP endpoint、固定普通 RAG 单图与单次模式选择
+- 显式回答/澄清/拒答结果、可核验引用及独立证据回查 API；目前 `sources` 已来自结构化 `RetrievalHit`，但 span 级 citation 尚未进入 API 响应
+- 中文分词 BM25、自定义 RRF、reranker、按版本/有效期过滤（已有元数据不等于已执行过滤）
+- 部署级认证、精确 CORS、Docker 交付及计划中的 Pi 端到端兼容性验收
+- 每 Agent 身份、公私分区、协作编辑、异步入库和文档历史生命周期（已顺延）
+- 限流、TLS、生产级部署与跨重启持久会话；新产品不再以 PostgresSaver/会话恢复为目标
 
 ### 下一步
 
-1. 固定评测契约，让报告绑定代码、语料、索引、模型与 prompt。
-2. ~~建立结构化 `RetrievalHit`，打通 manifest metadata、chunk/span 与索引版本~~——M1 已完成（stage 1–3）：类型化命中 + `chunk_id`/精确 span/`retrieval_channel` + 受治理 active/expired fixture + 真实索引集成测试。
-3. 先扩展并冻结有区分度的检索挑战集（M2：扩题集、补 qrels、冻结 `acceptance.yaml`），再通过消融选择中文 sparse、fusion 和 reranker 策略。
-4. 在检索证据稳定后实现显式拒答、真实多轮澄清和可核验引用。
-5. 最后稳定服务契约并完成私有部署；严格阶段与退出条件见 [`ROADMAP.md`](ROADMAP.md)。
+1. 按已确认 [PRD](docs/PRD.md) 冻结五天演示版范围和评测契约，保留历史报告；先补挑战题/qrels，再看新行为的结果。
+2. 复用已完成的 M1 证据契约，解耦检索与可选生成运行时；通过 L2 稳定接口接入 HTTP/MCP，不让服务层穿透检索内部。
+3. 提供固定普通 RAG 单图与单次化双图；将旧 history/HITL 协议显式迁移为单次 decision 和引用，不混淆新旧澄清指标。
+4. 完成同配置评测、Pi 实测、Python/Docker 与 Gradio 演示；只按验证证据宣布交付，不预设 Agent 必然更好。
+5. 完整协作知识层另行排期；无消融收益不默认升级检索算法。检查点与退出条件见 [ROADMAP](ROADMAP.md)，旧 M0–M6 计划保留在[历史归档](docs/archive/roadmap-before-retrieval-demo.md)。
 
 ## License
 

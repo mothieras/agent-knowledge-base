@@ -22,3 +22,5 @@ tiktoken==0.13.0
 # --- service layer ---
 fastapi==0.141.1
 uvicorn==0.52.3
+# --- MCP (Day 1 兼容性验证 pin；2.x 用 MCPServer，勿装 1.x) ---
+mcp==2.1.1
