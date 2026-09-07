@@ -13,6 +13,11 @@ class VectorDbManager:
         self.__dense_embeddings = HuggingFaceEmbeddings(model_name=config.DENSE_MODEL)
         self.__sparse_embeddings = FastEmbedSparse(model_name=config.SPARSE_MODEL)
 
+    @property
+    def client(self) -> QdrantClient:
+        """embedded 模式单进程只允许一个 client；复用同一个，勿另开。"""
+        return self.__client
+
     def _dense_vector_size(self):
         return len(self.__dense_embeddings.embed_query("test"))
 

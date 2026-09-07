@@ -45,6 +45,138 @@ def _strip_anchor(source: str) -> str:
     return source.split("#")[0]
 
 
+def _parse_hits(hits_by_item, item_id: str) -> list[dict]:
+    """兼容两种 per-item 命中形态：source 列表或 {source, ...} 记录。"""
+    hits = hits_by_item.get(item_id, [])
+    if hits and isinstance(hits[0], str):
+        return [{"source": s} for s in hits]
+    return hits
+
+
+def _grade_map(item: dict) -> dict[str, int]:
+    """challenge 题：qrels {source, grade, anchor} → {source: grade}；grade1 命中计分。"""
+    grades = {}
+    for q in item.get("qrels", []):
+        grades[q["source"]] = max(grades.get(q["source"], 0), int(q.get("grade", 0)))
+    return grades
+
+
+def _expected_set(item: dict):
+    """返回 (expected_files, grades)。challenge 题用 qrels，golden 题用 expected_sources。"""
+    if item.get("qrels"):
+        grades = _grade_map(item)
+        return set(grades), grades
+    expected = [s for s in item.get("expected_sources", []) if s]
+    files = {_strip_anchor(s) for s in expected}
+    return files, {f: 2 for f in files}
+
+
+def _ndcg(rels: list[int], k: int) -> float:
+    """nDCG@k：rel 为名次相关性（0/1/2）。"""
+    import math
+
+    dcg = sum(rel / math.log2(i + 2) for i, rel in enumerate(rels[:k]))
+    ideal = sorted(rels, reverse=True)[:k]
+    idcg = sum(rel / math.log2(i + 2) for i, rel in enumerate(ideal))
+    return dcg / idcg if idcg > 0 else 0.0
+
+
+def challenge_retrieval_metrics(items, hits_by_item, k_values=(5, 7)) -> dict:
+    """检索挑战集（40 题）计分：Recall@k、MRR、source_precision@5、nDCG@5、
+    hit_rate、hard-negative 泄漏、各题型明细。
+
+    口径（Day 1 冻结 acceptance.yaml retrieval_scoring）：
+    - grade 2 完全相关、grade 1 部分相关（版本冲突旧版）：命中计分
+    - hard_negatives 命中计入泄漏信号，不进 Recall/MRR 分母
+    - source 去重后计名次
+    - 回归锚点：origin 以 golden- 开头的 20 条
+    """
+    recall_at = {k: [] for k in k_values}
+    mrr_vals = []
+    prec5_vals = []
+    ndcg5_vals = []
+    leak_items = []
+    scored = 0
+    breakdown = {}
+
+    for item in items:
+        expected_files, grades = _expected_set(item)
+        if not expected_files:
+            continue
+        scored += 1
+        hits = _parse_hits(hits_by_item, item["id"])
+        dedup_sources = list(dict.fromkeys(h["source"] for h in hits))
+
+        for k in k_values:
+            recall_at[k].append(1.0 if expected_files & set(dedup_sources[:k]) else 0.0)
+
+        best = None
+        for i, s in enumerate(dedup_sources, start=1):
+            if s in expected_files and (best is None or i < best):
+                best = i
+        mrr_vals.append(1.0 / best if best else 0.0)
+
+        prec5_vals.append(
+            sum(1 for s in dedup_sources[:5] if s in expected_files) / 5.0
+        )
+
+        rels = [grades.get(s, 0) for s in dedup_sources]
+        ndcg5_vals.append(_ndcg(rels, 5))
+
+        leaked = [s for s in dedup_sources if s in set(item.get("hard_negatives", []))]
+        if leaked:
+            leak_items.append({"id": item["id"], "leaked": leaked})
+
+        cat = item.get("category", "n/a")
+        b = breakdown.setdefault(cat, {"scored_items": 0, "recall@5": [], "recall@7": [], "mrr": [], "leak_items": 0})
+        b["scored_items"] += 1
+        b["recall@5"].append(recall_at[5][-1])
+        b["recall@7"].append(recall_at[7][-1])
+        b["mrr"].append(mrr_vals[-1])
+        b["leak_items"] += len(leaked)
+
+    def _avg(xs):
+        return sum(xs) / len(xs) if xs else 0.0
+
+    anchor_ids = {item["id"] for item in items if item.get("origin", "").startswith("golden-")}
+    anchor_recall5 = []
+    for item in items:
+        if item["id"] not in anchor_ids:
+            continue
+        expected_files, _ = _expected_set(item)
+        if not expected_files:
+            continue
+        hits = _parse_hits(hits_by_item, item["id"])
+        top5 = set(list(dict.fromkeys(h["source"] for h in hits))[:5])
+        anchor_recall5.append(1.0 if expected_files & top5 else 0.0)
+
+    return {
+        "scored_items": scored,
+        **{f"recall@{k}": _avg(v) for k, v in recall_at.items()},
+        "mrr": _avg(mrr_vals),
+        "hit_rate": _avg(recall_at[min(k_values)]),
+        "source_precision@5": _avg(prec5_vals),
+        "ndcg@5": _avg(ndcg5_vals),
+        "hard_negative_leak_items": leak_items,
+        "hard_negative_leak_count": len(leak_items),
+        "breakdown": {
+            cat: {
+                "scored_items": b["scored_items"],
+                "recall@5": _avg(b["recall@5"]),
+                "recall@7": _avg(b["recall@7"]),
+                "mrr": _avg(b["mrr"]),
+                "leak_items": b["leak_items"],
+            }
+            for cat, b in breakdown.items()
+        },
+        "regression_anchor": {
+            "ids": sorted(anchor_ids),
+            "count": len(anchor_ids),
+            "recall@5": _avg(anchor_recall5),
+        },
+    }
+
+
 def retrieval_metrics(items, hits_by_item, k_values=(5, 7)) -> dict:
     """计算实际进入检索流程的题；HITL 澄清题由 clarification 指标单独评估。"""
     recall_at = {k: [] for k in k_values}

@@ -1,8 +1,12 @@
 """T3 入库脚本：clear_all 重建 Qdrant，按 manifest.json + data/fixtures/manifest.json 入库全部语料。
 
-前提: 根目录 .env 已配置 DEEPSEEK_API_KEY；已先运行 data/sync_sources.py。
+前提: 根目录 .env 已配置 DEEPSEEK_API_KEY（无需 API 调用，仅保持同源加载）；已先运行 data/sync_sources.py。
 运行: cd src && uv run --python ../.venv/bin/python ingest_corpus.py
+
+构建完成后写入 qdrant_db/snapshot_manifest.json（index_id + 构建输入/产物绑定），
+服务启动校验并随响应返回 index_id。
 """
+import hashlib
 import json
 import os
 import sys
@@ -12,6 +16,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 os.environ.pop("HF_ENDPOINT", None)  # 模型下载走官方 huggingface.co + 本机 SOCKS 代理
 
 from dotenv import load_dotenv
+
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 
 import config
@@ -68,7 +73,55 @@ def _load_documents():
     return paths, source_names, doc_meta, len(fixtures["documents"])
 
 
+def _parent_store_hash() -> tuple[int, str]:
+    files = sorted(Path(config.PARENT_STORE_PATH).glob("*.json"))
+    h = hashlib.sha256()
+    for path in files:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        pid = data.get("metadata", {}).get("parent_id")
+        h.update(pid.encode("utf-8") if pid else b"")
+        h.update(b"\x00")
+        h.update(hashlib.sha256(data.get("page_content", "").encode("utf-8")).digest())
+    return len(files), hashlib.sha256(h.digest()).hexdigest()
+
+
+def _child_store_hash(client, collection: str) -> tuple[int, str]:
+    """Qdrant payload（page_content + metadata chunk_id）的确定性摘要。
+
+    Point UUID 不入摘要；scroll 按 id 排序得到确定性顺序。
+    """
+    points = []
+    offset = None
+    while True:
+        batch, offset = client.scroll(
+            collection, limit=200, offset=offset, with_payload=True, with_vectors=False
+        )
+        points.extend(batch)
+        if offset is None:
+            break
+    points.sort(key=lambda p: str(p.id))
+    h = hashlib.sha256()
+    for p in points:
+        h.update(str(p.id).encode("utf-8"))
+        h.update(b"\x00")
+        h.update(p.payload.get("page_content", "").encode("utf-8"))
+        h.update(b"\x00")
+        md = p.payload.get("metadata", {})
+        h.update(md.get("chunk_id", "").encode("utf-8"))
+        h.update(b"\x00")
+    return len(points), hashlib.sha256(h.digest()).hexdigest()
+
+
+def _source_sha256(paths, source_names) -> dict[str, str]:
+    return {
+        source_names[p]: hashlib.sha256(Path(p).read_bytes()).hexdigest()
+        for p in paths
+    }
+
+
 def main():
+    from db.snapshot import build_manifest
+
     paths, source_names, doc_meta, fixture_count = _load_documents()
 
     rs = RAGSystem()
@@ -81,9 +134,42 @@ def main():
     if added != len(paths):
         print("错误: 存在 skipped，入库不完整", file=sys.stderr)
         return 1
-    # parent_store 一个 chunk 一个 json，直接数文件即可得 parent chunk 数
-    parents = len(list(Path(config.PARENT_STORE_PATH).glob("*.json")))
-    print(f"[chunks] parent_chunks={parents}")
+
+    parent_count, parent_hash = _parent_store_hash()
+    # embedded 单进程只允许一个 client：复用 RAGSystem 已持有的实例
+    client = rs.vector_db.client
+    child_count, child_hash = _child_store_hash(client, config.CHILD_COLLECTION)
+    print(f"[chunks] parent_chunks={parent_count} child_chunks={child_count}")
+
+    manifest = build_manifest(
+        corpus_manifest_sha256=hashlib.sha256(MANIFEST.read_bytes()).hexdigest(),
+        fixtures_manifest_sha256=hashlib.sha256(FIXTURES_MANIFEST.read_bytes()).hexdigest(),
+        source_content_sha256=_source_sha256(paths, source_names),
+        normalizer="pymupdf4llm/markdown-as-is",
+        chunker={
+            "parent_splitter": "MarkdownHeaderTextSplitter",
+            "headers": config.HEADERS_TO_SPLIT_ON,
+            "min_parent_size": config.MIN_PARENT_SIZE,
+            "max_parent_size": config.MAX_PARENT_SIZE,
+            "child_splitter": "RecursiveCharacterTextSplitter",
+            "child_size": config.CHILD_CHUNK_SIZE,
+            "child_overlap": config.CHILD_CHUNK_OVERLAP,
+        },
+        dense_model=config.DENSE_MODEL,
+        sparse_model=config.SPARSE_MODEL,
+        parent_count=parent_count,
+        parent_content_sha256=parent_hash,
+        child_count=child_count,
+        child_content_sha256=child_hash,
+        retrieval={
+            "collection": config.CHILD_COLLECTION,
+            "k_default": config.DEFAULT_RETRIEVAL_K,
+            "score_threshold": config.RETRIEVAL_SCORE_THRESHOLD,
+        },
+    )
+    manifest_path = Path(config.QDRANT_DB_PATH) / "snapshot_manifest.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"[snapshot] index_id={manifest['index_id']} → {manifest_path}")
     return 0
 
 

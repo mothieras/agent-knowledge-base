@@ -15,7 +15,10 @@ class DocumentManager:
             return 0, 0
             
         document_paths = [document_paths] if isinstance(document_paths, str) else document_paths
-        document_paths = [p for p in document_paths if p and Path(p).suffix.lower() in [".pdf", ".md"]]
+        document_paths = [
+            p for p in document_paths
+            if p and Path(p).suffix.lower() in [".pdf", ".md", ".txt"]
+        ]
         
         if not document_paths:
             return 0, 0
@@ -42,8 +45,15 @@ class DocumentManager:
             try:
                 if source_path.suffix.lower() == ".md":
                     shutil.copy(source_path, md_path)
+                elif source_path.suffix.lower() == ".txt":
+                    # TXT 按 UTF-8 规范化导入；内容直接作为无标题纯文本分块
+                    md_path.write_text(source_path.read_text(encoding="utf-8"), encoding="utf-8")
                 else:
                     pdfs_to_markdowns(str(source_path), overwrite=False)
+                    extracted = md_path.read_text(encoding="utf-8").strip()
+                    if not extracted:
+                        # 扫描件/无文本层 PDF 不是"导入成功"
+                        raise ValueError("PDF 未提取出可用文本（扫描件/OCR 不支持）")
                 parent_chunks, child_chunks = self.rag_system.chunker.create_chunks_single(
                     md_path,
                     source_name=source_name or source_path.name,
