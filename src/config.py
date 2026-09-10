@@ -3,6 +3,10 @@ import os
 # --- Directory Configuration ---
 _BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
+# FastEmbed 稀疏模型缓存：默认在系统临时目录（macOS 周期清理，容器内不存在），
+# 钉到项目内稳定路径；显式设置过则尊重外部值
+os.environ.setdefault("FASTEMBED_CACHE_PATH", os.path.join(_BASE_DIR, ".fastembed_cache"))
+
 MARKDOWN_DIR = os.path.join(_BASE_DIR, "markdown_docs")
 # 数据目录支持环境变量覆盖（规模实测/容器挂载用独立快照，不污染质量索引）
 PARENT_STORE_PATH = os.environ.get("PARENT_STORE_PATH", os.path.join(_BASE_DIR, "parent_store"))
