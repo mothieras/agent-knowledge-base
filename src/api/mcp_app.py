@@ -24,7 +24,7 @@ from starlette.requests import Request
 
 from core.app_service import AppService
 from core.retrieval_service import ServiceError
-from schema.dto import EvidenceWindow, SearchRequest, SearchResponse
+from schema.dto import AnswerRequest, AnswerResponse, EvidenceWindow, SearchRequest, SearchResponse
 
 EXPECTED_TOKEN = os.environ.get("DEMO_API_TOKEN", "")
 
@@ -50,11 +50,11 @@ def build_mcp_asgi(server: MCPServer):
     return BearerMiddleware(server.streamable_http_app(streamable_http_path="/"))
 
 
-def create_mcp_server() -> MCPServer:
+def create_mcp_server(include_ask: bool = True) -> MCPServer:
     server = MCPServer(
         "agentic-rag",
         title="Agentic RAG 知识检索",
-        version="0.2.0",
+        version="0.3.0",
         lifespan=_lifespan,
     )
 
@@ -113,6 +113,38 @@ def create_mcp_server() -> MCPServer:
             )],
             structured_content=window.model_dump(),
         )
+
+    if include_ask:
+
+        @server.tool(structured_output=True)
+        async def ask_knowledge(
+            ctx: Context[Any, Any],
+            message: Annotated[str, "要回答的问题，≤2000 字符"],
+            mode: Annotated[str, "问答模式：rag（固定单图）或 agentic（双图 Agent），默认 rag"] = "rag",
+        ) -> Annotated[CallToolResult, AnswerResponse]:
+            """整体委托服务端内置问答：返回单次 decision + 答案 + 引用。
+
+            仅生成模型配置启用时发布；未启用时调用方会收到可识别错误。
+            """
+            svc: AppService = ctx.request_context.lifespan_context
+            if svc.generation is None:
+                raise ToolError("生成模型未配置，问答能力不可用")
+            import asyncio
+
+            try:
+                req = AnswerRequest(message=message, mode=mode)
+                resp = await asyncio.to_thread(svc.generation.invoke, req)
+            except ServiceError as exc:
+                raise ToolError(exc.message) from exc
+            return CallToolResult(
+                content=[TextContent(
+                    type="text",
+                    text=f"decision={resp.decision}"
+                         + (f"，命中 {len(resp.citations)} 条引用" if resp.citations else "")
+                         + f"，mode={resp.mode}",
+                )],
+                structured_content=resp.model_dump(),
+            )
 
     return server
 

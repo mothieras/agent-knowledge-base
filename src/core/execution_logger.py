@@ -156,22 +156,6 @@ def _print_block(title: str, payload: Any, color: str) -> None:
     print(pformat(payload, width=120, sort_dicts=False))
 
 
-def log_chat_start(message: str, thread_id: str, has_pending_interrupt: bool) -> None:
-    _print_block(
-        "USER QUERY",
-        {
-            "thread_id": thread_id,
-            "pending_interrupt": has_pending_interrupt,
-            "message": _truncate(message),
-        },
-        "blue",
-    )
-
-
-def log_chat_end(state: Any) -> None:
-    _print_block("FINAL GRAPH STATE", state_preview(state), "blue")
-
-
 def log_node_start(name: str, state: Any) -> None:
     _print_block(f"NODE START: {name}", state_preview(state), "cyan")
 

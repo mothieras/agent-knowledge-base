@@ -35,7 +35,8 @@ async def _lifespan(app: FastAPI):
 
     # MCP 工具从 lifespan context 拿 app_service；mount 在 lifespan 外（create_app），
     # 会话由 session manager 在 lifespan 内运行（2.x 要求，否则握手 500）。
-    mcp_server = create_mcp_server()
+    # ask_knowledge 仅生成能力启用时发布（DESIGN 6.2）。
+    mcp_server = create_mcp_server(include_ask=app_service.llm_configured)
     app.mount("/mcp", build_mcp_asgi(mcp_server))
     async with mcp_server.session_manager.run():
         print(

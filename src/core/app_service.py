@@ -103,7 +103,7 @@ def _source_uris_from_manifests() -> dict[str, str]:
 
 def build_app_service(*, snapshot_path=None, vector_db=None, parent_store=None,
                       build_generation=True) -> AppService:
-    """装配完整检索运行时；生成能力可选（Day 3 接入问答图）。"""
+    """装配完整检索运行时；生成能力可选（未配置 LLM_API_KEY 时仅检索）。"""
     manifest = _load_snapshot_manifest() if snapshot_path is None else snapshot_path
     vdb = vector_db or VectorDbManager()
     collection = vdb.get_collection(config.CHILD_COLLECTION)
@@ -118,9 +118,23 @@ def build_app_service(*, snapshot_path=None, vector_db=None, parent_store=None,
     evidence = EvidenceStore(store, snapshot)
     source_uris = _source_uris_from_manifests()
     retrieval_service = RetrievalService(retriever, evidence, source_uris=source_uris)
-    # Day 3 接线：build_generation 且 LLM_API_KEY 存在时装配 rag/agentic 图。
-    # 本阶段 generation 恒为 None，invoke/stream 返回 llm_not_configured。
+
     generation = None
+    if build_generation and config.LLM_API_KEY:
+        from langchain_openai import ChatOpenAI
+
+        from core.answer_service import AnswerService
+
+        llm = ChatOpenAI(
+            model=config.LLM_MODEL,
+            base_url=config.LLM_BASE_URL,
+            api_key=config.LLM_API_KEY,
+            temperature=config.LLM_TEMPERATURE,
+            max_retries=config.LLM_MAX_RETRIES,
+            timeout=config.LLM_REQUEST_TIMEOUT_S,
+            max_tokens=config.LLM_MAX_TOKENS,
+        )
+        generation = AnswerService(llm, retriever, evidence, source_uris)
 
     return AppService(snapshot=snapshot, retrieval_service=retrieval_service,
                       generation=generation)

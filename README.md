@@ -51,11 +51,11 @@
 
 | 领域 | 上游底座 | 本 fork 的增量 |
 |---|---|---|
-| Agent 编排 | LangGraph 主图/子图、查询改写、HITL 澄清、并行子问题、上下文压缩 | DeepSeek JSON mode 适配；checkpointer 作为可注入依赖；服务层按 `thread_id` 隔离请求 |
+| Agent 编排 | LangGraph 主图/子图、查询改写、HITL 澄清、并行子问题、上下文压缩 | DeepSeek JSON mode 适配；单次化：固定 RAG 单图 + 双图单次 decision 协议、共享请求预算、引用机械校验与一次修复 |
 | 检索 | 父子分块、Qdrant dense + sparse hybrid retrieval、文件型 parent store | 公开中文 RAG 语料、固定 revision 与哈希校验、来源 metadata、检索 recorder 与分维度评测 |
-| 应用入口 | Gradio 教学应用 | FastAPI `/invoke`、`/stream`、`/history`；独立 HTTP/SSE client；Gradio 改为薄客户端 |
-| 评测 | — | 30 条领域 golden set、自动评测 runner、基线报告与 badcase 信号 |
-| 可运行性 | 本地教学项目 | 环境变量驱动的 DeepSeek 配置、smoke script、API/schema/graph 测试 |
+| 应用入口 | Gradio 教学应用 | FastAPI `/search` `/evidence` `/invoke` `/stream`、MCP 只读+问答工具、独立 HTTP/SSE client；Gradio 改为薄客户端 |
+| 评测 | — | 30 条领域 golden set、40 题检索挑战集、自动评测 runner、基线报告与 badcase 信号 |
+| 可运行性 | 本地教学项目 | 环境变量驱动的 DeepSeek 配置、生成模型可选的检索服务、smoke script、API/schema/graph 测试 |
 
 完整提交差异也可通过 GitHub 的 [fork compare](https://github.com/GiovanniPasq/agentic-rag-for-dummies/compare/main...mothieras:main) 查看。
 
@@ -63,12 +63,13 @@
 
 ### Agent 与检索
 
-- LangGraph 主图负责历史摘要、查询改写、澄清和答案聚合。
-- 子图负责工具调用、父子块检索、上下文压缩和 fallback。
+- 两种问答图共用一套模型配置：`rag` 固定单图（retrieve → assemble_context → generate → validate_result，零命中确定性拒答，不做改写或工具循环）；`agentic` 双图（主图改写/拆解 → 并行子图检索 → 聚合 → 校验）。
+- 主图/子图共享请求级预算（最多 3 子问题、8 次工具调用、10 次迭代）；调用工具前预留预算。
+- 单次 decision 协议：`answered` / `clarification_required` / `refused`，`clarification_required` 是终态而非暂停点；`/history` 与 `thread_id` 已退役。
+- 引用机械校验（`rag_agent/validation.py`）：evidence_id 必须属于本次实际取得的证据集合，quote 必须是证据原文精确子串，span 由 quote 位置推导并绑定快照；失败在预算内修复一次，仍失败返回 `result_validation_failed`，不伪造引用、不冒充正常拒答。
 - Qdrant 以本地模式保存 dense 与 FastEmbed BM25 sparse vectors，并使用 hybrid retrieval。
-- 检索证据走类型化 `RetrievalHit` 契约（`db/retrieval.py`）：`source`/`version`/有效期/`priority` 等 manifest 元数据 + `chunk_id` + 父文本精确 `span` 切片 + `retrieval_channel`，流经 Agent state、SSE 事件与 eval，全程无字符串解析。`Retriever` 协议由 `QdrantRetriever`（prod）与 `InMemoryRetriever`（test）两个适配器坐实。
-- `InMemorySaver` 保存单进程内会话；API 接受显式 `thread_id` 继续多轮对话。
-- 可选 Langfuse callback 记录图节点、LLM 和工具调用。
+- 检索证据走类型化 `RetrievalHit` 契约（`db/retrieval.py`）：`source`/`version`/有效期/`priority` 等 manifest 元数据 + `chunk_id` + 父文本精确 `span` 切片 + `retrieval_channel`，流经图 state、SSE 事件与 eval，全程无字符串解析。`Retriever` 协议由 `QdrantRetriever`（prod）与 `InMemoryRetriever`（test）两个适配器坐实。
+- 生成模型可选：未配置时检索照常 ready，问答明确返回 `llm_not_configured`。
 
 ### 语料治理
 
@@ -90,20 +91,31 @@
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
-| `GET` | `/health` | RAGSystem readiness |
-| `GET` | `/info` | 当前模型与 collection |
-| `POST` | `/invoke` | 非流式调用；返回答案、检索上下文和候选来源 |
-| `POST` | `/stream` | SSE 流式调用 |
-| `GET` | `/history?thread_id=...` | 查询进程内会话历史 |
+| `GET` | `/health` | 检索 readiness（不依赖 LLM） |
+| `GET` | `/info` | 快照 index_id、模型标识、可用 modes |
+| `POST` | `/search` | 结构化证据检索（无生成模型调用） |
+| `GET` | `/evidence/{evidence_id}` | 按 ID 回查有界原文窗口 |
+| `POST` | `/invoke` | 单次问答（`mode`=rag/agentic，默认 rag） |
+| `POST` | `/stream` | 同一问答契约的 SSE 进度与结果 |
+| `GET` | `/history` | 已退役（410）：单次请求语义，不保留会话 |
 
-SSE 使用结构化事件，而不是把所有内容压成一段文本：
+问答结果统一为单次 decision 协议：
 
 ```text
-answer_token · tool_call · tool_result · system_status
-clarification · done · error
+request_id · index_id · mode
+decision = answered | clarification_required | refused
+answer · clarification_question? · limitations[]
+citations[] = citation_id + evidence_id + source + chunk_id + span + quote
+usage = input/output tokens + estimated cost + model calls
 ```
 
-`done` 事件携带最终答案、改写后的子问题、检索上下文及候选来源文件名（取自结构化 `RetrievalHit`，非文本解析）。
+`thread_id` 等旧协议字段被明确拒绝（参数错误），不静默忽略。`/invoke` 与 `/stream` 的 SSE 使用结构化事件：
+
+```text
+status · tool_call · tool_result · done · error
+```
+
+`done` 事件携带**校验后**的完整 `AnswerResponse`（引用经机械校验可精确回查，答案不再实时流式输出未校验文本）；异常恰好一个 `error`。
 
 ## 服务化（FastAPI + SSE）
 
@@ -113,24 +125,26 @@ L4  Gradio UI
         v
     AgentClient (HTTP / SSE)
         |
-L3  FastAPI  /invoke · /stream · /history
+L3  FastAPI  /health /info /search /evidence /invoke /stream · /mcp
         |
-L2  RAGSystem  bootstrap · checkpointer · run config
+L2  AppService  search/read_evidence + AnswerService  rag/agentic 单次问答
         |
-L1  LangGraph  main graph + agent subgraph
+L1  LangGraph  rag 单图 · agentic 主图 + 检索子图
         |
 L0  Qdrant hybrid retrieval + parent store + corpus
 ```
 
-依赖方向保持单向：UI 只依赖 client，API 只通过 `RAGSystem` 使用 graph，检索和 Agent 内部可以继续演进而不改变 HTTP 协议。
+依赖方向保持单向：UI 只依赖 client；API 只通过 L2 公共接口使用检索与问答，不 import `db/` / `rag_agent/` 内部；检索和 Agent 内部可以继续演进而不改变 HTTP 协议。生成模型可选：未配置 `DEEPSEEK_API_KEY` 时检索照常 ready，问答返回明确的 `llm_not_configured`。
 
 主要代码入口：
 
-- [`src/api/`](src/api/)：FastAPI 路由、SSE 事件映射与服务依赖
-- [`src/client/`](src/client/)：同步调用与 SSE 消费客户端
-- [`src/core/rag_system.py`](src/core/rag_system.py)：模型、存储、工具和 graph 的 composition root
-- [`src/rag_agent/`](src/rag_agent/)：主图、子图、节点、边与工具
-- [`src/schema/`](src/schema/)：请求、响应和 SSE event schemas
+- [`src/api/`](src/api/)：FastAPI 路由、SSE 序列化、MCP 工具与访问边界
+- [`src/client/`](src/client/)：HTTP/SSE 客户端
+- [`src/core/app_service.py`](src/core/app_service.py)：检索先于生成的 composition root
+- [`src/core/retrieval_service.py`](src/core/retrieval_service.py)：search/read_evidence 与公共证据 DTO
+- [`src/core/answer_service.py`](src/core/answer_service.py)：单次问答、预算、usage 与事件
+- [`src/rag_agent/`](src/rag_agent/)：rag 单图、agentic 主图/子图、引用校验
+- [`src/schema/dto.py`](src/schema/dto.py)：HTTP/MCP 共用请求、证据、答案与 SSE event schemas
 
 ## 快速开始
 
@@ -193,8 +207,18 @@ curl http://127.0.0.1:8000/health
 ```bash
 curl -N http://127.0.0.1:8000/stream \
   -H 'Content-Type: application/json' \
-  -d '{"message":"解释 HyDE 如何改写检索问题","stream_tokens":true}'
+  -d '{"message":"解释 HyDE 如何改写检索问题","mode":"agentic"}'
 ```
+
+非流式单次问答（`mode` 默认 `rag`）：
+
+```bash
+curl http://127.0.0.1:8000/invoke \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"什么是 HyDE？","mode":"rag"}'
+```
+
+未配置 `DEEPSEEK_API_KEY` 时服务照常 ready：`/search`、`/evidence`、MCP 检索工具可用，问答返回 `llm_not_configured`。
 
 ### 5. 启动 Gradio 客户端
 
@@ -218,28 +242,56 @@ version_conflict · ambiguous_followup · unanswerable
 
 ```bash
 cd eval
-python run_eval.py
+env -u ALL_PROXY -u all_proxy ../.venv/bin/python run_eval.py --mode agentic  # 或 --mode rag
+```
+
+检索挑战集（40 题，不调用生成模型）：
+
+```bash
+cd eval
+env -u ALL_PROXY -u all_proxy ../.venv/bin/python run_challenge.py
 ```
 
 ### 已记录基线
 
-当前基准是 **2026-09-01 基线**（stage 3 收尾后重跑，语料 14 篇第三方 + 4 篇受治理 fixture，索引 354 points）。完整报告见 [`eval/reports/baseline-2026-09-01.md`](eval/reports/baseline-2026-09-01.md)，per-item 数据见 [`baseline-2026-09-01.jsonl`](eval/reports/baseline-2026-09-01.jsonl)。30 条全部执行，0 错误、0 SKIP；检索指标只统计实际进入检索流程的 20 题，5 条 HITL 澄清题由 clarification 指标单独评估。历史基准：[2026-08-28](eval/reports/baseline-2026-08-28.md)（stage 2 收尾，14 篇纯第三方语料）、[2026-08-23](eval/reports/baseline-all-in-rag-2026-08-23.md)（M0 冻结）。
+**当前基准是 2026-09-10 单次 decision 协议基线（mode=agentic 与 mode=rag 分别建立首轮基线）**：完整报告见 [`eval/reports/baseline-2026-09-10-agentic.md`](eval/reports/baseline-2026-09-10-agentic.md) 与 [`baseline-2026-09-10-rag.md`](eval/reports/baseline-2026-09-10-rag.md)，per-item 数据见同名 `.jsonl`。检索指标统计进入检索流程的 20 题，5 条歧义题由 clarification 指标单独评估。
+
+| 指标（单次 decision 协议） | 2026-09-10 agentic | 2026-09-10 rag |
+|---|---:|---:|
+| 执行 / 错误 / SKIP | 30 / 0 / 0 | 30 / 0 / 0 |
+| Recall@5 / Recall@7 | 1.000 / 1.000 | 1.000 / 1.000 |
+| MRR | 1.000 | 1.000 |
+| expired/fixture 泄漏题数 | 1 / 1 | 0 / 0 |
+| Faithfulness | 0.957 | 0.991 |
+| Answer relevancy | 0.918 | 0.879 |
+| Context precision / recall | 0.674 / 0.900 | 0.863 / 0.794 |
+| refusal precision（TP/(TP+FP)）/ recall | 1.000 / 1.000 | 0.500 / 1.000 |
+| misrefusal / overclarify rate | 0.000 / 0.040 | 0.200 / 0.000 |
+| Clarification rate（歧义题 n=5） | 0.200 | 0.000 |
+| 引用机械有效性（answered 题） | 23/23 | 20/20 |
+| Latency P50 / P95 | 10.56s / 17.85s | 1.65s / 3.74s |
+| 平均 cost（¥/query） | 0.0075 | 0.0027 |
+
+两种模式首轮基线的已知差异（Day 4 对比审计输入，不预设结论）：rag 单图无改写/拆解，单次检索的 top-k 证据直接约束回答，歧义题不会返回澄清（clarification 0.000）且误拒率偏高（0.200，部分多跳题证据片段不足以支撑完整回答）；agentic 拆解/多轮工具后拒答精度更高（refusal precision 1.000，含 rewrite JSON 解析失败重试）。agentic 延迟与成本显著更高（P50 10.56s vs 1.65s，成本约 2.8×），检索指标两者持平（Recall@5 均 1.000）。
+
+**历史基准（旧 HITL 协议，不回写、不直接同比）**：
 
 | 指标 | 2026-09-01 | 2026-08-28 |
 |---|---:|---:|
 | Recall@5 / Recall@7 | 1.000 / 1.000 | 1.000 / 1.000 |
 | MRR | 0.975 | 0.975 |
-| expired/fixture 泄漏题数 | 0 / 0 | 0 / n/a |
 | Faithfulness | 0.895 | 0.943 |
 | Answer relevancy | 0.909 | 0.882 |
 | Context precision / recall | 0.679 / 0.908 | 0.761 / 1.000 |
 | Refusal recall / legacy specificity（历史非误拒率） | 1.000 / 0.840 | 1.000 / 0.880 |
-| Clarification rate | 0.800 | 0.600 |
+| Clarification rate（HITL 暂停口径） | 0.800 | 0.600 |
 | Latency P50 / P95 | 15.11s / 24.85s | 14.99s / 27.03s |
 
-**历史指标口径提醒**：旧 runner/报告中的 `refusal.precision` 实际计算 `1 - false_refusals / answerable_n`，不是标准拒答 precision；分母含已执行的非 unanswerable 题（包括澄清题）。上表如实标为历史非误拒率，旧报告不回写。新 decision 评测将另行使用 TP/(TP+FP)，不能将二者直接比较。
+完整历史报告：[2026-09-01](eval/reports/baseline-2026-09-01.md)、[2026-08-28](eval/reports/baseline-2026-08-28.md)、[2026-08-23](eval/reports/baseline-all-in-rag-2026-08-23.md)（M0 冻结）。
 
-检索层（stage 3 真正触碰的路径）与泄漏信号完全持平；生成层波动经复验为 judge 采样噪声与索引重建后的轨迹漂移（对两轮答案独立重打分 faithfulness 0.950 vs 0.956 持平），详见报告「已知局限」。保留偏低指标是刻意的：显式拒答、澄清覆盖、版本过滤仍是路线图工作。Recall 1.000 也只代表这套固定语料与 golden set，不是对开放问题的泛化承诺。
+**历史指标口径提醒**：旧 runner/报告中的 `refusal.precision` 实际计算 `1 - false_refusals / answerable_n`，不是标准拒答 precision；新 decision 协议使用标准 TP/(TP+FP)，二者不能直接比较。旧 HITL 的澄清暂停率与新单次澄清率也是不同语义，并列报告不直接同比。
+
+检索挑战集（40 题直接检索）回归锚点 Recall@5=1.000 与 Day 1 基线持平（见 [`eval/reports/challenge-2026-09-09.md`](eval/reports/challenge-2026-09-09.md)），全量指标 Recall@5=0.950、MRR=0.933、2 题 hard-negative 泄漏与 Day 2 持平。Recall 1.000 只代表这套固定语料与 golden set，不是对开放问题的泛化承诺。
 
 ## 测试
 
@@ -256,12 +308,12 @@ python -m pytest tests/ -q
 
 当前测试覆盖：
 
-- Pydantic request/response/SSE schemas
-- FastAPI readiness、invoke 与 stream contract
-- token、工具调用、澄清和 done 事件映射
-- LangGraph 默认与注入 checkpointer 的编译
-- `RetrievalHit` 的 msgpack serde 往返（checkpointer 契约）
-- 检索路径（search→compress→aggregate）与 chunker metadata/chunk_id/span
+- Pydantic 请求/响应/SSE schemas（含 `thread_id` 拒绝与 mode 校验）
+- FastAPI readiness、search/evidence 契约、invoke/stream decision 协议与终态
+- 固定 RAG 单图与单次化双图的编译、三种 decision、引用修复与错误路径
+- 引用机械校验：伪造 evidence_id、quote 非原文子串、span 推导与精确回查
+- 跨请求状态隔离（无 checkpointer、无会话历史）
+- 检索路径（search→compress→collect）与 chunker metadata/chunk_id/span
 - 受治理 fixture 的静态契约（active/expired 配对语义）
 - 真实本地索引集成测试：`skipif` 本地未入库，验证 metadata 全链路传播与 `parent.content[span_start:span_end] == hit.content` 精确反查（fresh clone 自动跳过）
 
@@ -271,17 +323,17 @@ python -m pytest tests/ -q
 
 ```text
 src/
-  api/             FastAPI routes + SSE mapping
+  api/             FastAPI routes、SSE 序列化、MCP 工具与鉴权
   client/          HTTP/SSE client
-  core/            RAGSystem composition and observability
-  db/              Qdrant and parent store
-  rag_agent/       LangGraph nodes, edges, state and tools
-  schema/          API and event contracts
+  core/            AppService composition、检索/问答服务、预算与 usage
+  db/              Qdrant、parent store、快照与证据存储
+  rag_agent/       rag 单图、agentic 双图、节点、引用校验
+  schema/          HTTP/MCP 共用 DTO 与 SSE event schemas
   ui/              Gradio presentation
 
 data/              governed corpus + manifest
-eval/              golden set, metrics, runner and reports
-tests/             API/schema/graph tests
+eval/              golden set、挑战集、metrics、runner 和 reports
+tests/             API/schema/graph/validation tests
 docs/              confirmed PRD, target design and historical roadmap
 ```
 
@@ -289,20 +341,16 @@ docs/              confirmed PRD, target design and historical roadmap
 
 ### 尚未作为已完成能力声明
 
-- 生成模型可选的独立检索服务、MCP endpoint、固定普通 RAG 单图与单次模式选择
-- 显式回答/澄清/拒答结果、可核验引用及独立证据回查 API；目前 `sources` 已来自结构化 `RetrievalHit`，但 span 级 citation 尚未进入 API 响应
 - 中文分词 BM25、自定义 RRF、reranker、按版本/有效期过滤（已有元数据不等于已执行过滤）
-- 部署级认证、精确 CORS、Docker 交付及计划中的 Pi 端到端兼容性验收
+- Docker 交付及计划中的 Pi 端到端兼容性验收（MCP Streamable HTTP 已按 SDK 2.x 实现，Pi 实测在 Day 5）
 - 每 Agent 身份、公私分区、协作编辑、异步入库和文档历史生命周期（已顺延）
-- 限流、TLS、生产级部署与跨重启持久会话；新产品不再以 PostgresSaver/会话恢复为目标
+- 限流、TLS、生产级部署；新产品以单次请求为语义，不再提供跨请求会话
 
 ### 下一步
 
-1. 按已确认 [PRD](docs/PRD.md) 冻结五天演示版范围和评测契约，保留历史报告；先补挑战题/qrels，再看新行为的结果。
-2. 复用已完成的 M1 证据契约，解耦检索与可选生成运行时；通过 L2 稳定接口接入 HTTP/MCP，不让服务层穿透检索内部。
-3. 提供固定普通 RAG 单图与单次化双图；将旧 history/HITL 协议显式迁移为单次 decision 和引用，不混淆新旧澄清指标。
-4. 完成同配置评测、Pi 实测、Python/Docker 与 Gradio 演示；只按验证证据宣布交付，不预设 Agent 必然更好。
-5. 完整协作知识层另行排期；无消融收益不默认升级检索算法。检查点与退出条件见 [ROADMAP](ROADMAP.md)，旧 M0–M6 计划保留在[历史归档](docs/archive/roadmap-before-retrieval-demo.md)。
+1. Day 4：按冻结契约跑直接检索、单图与双图比较；审计引用/拒答/澄清 badcase；规模快照与 3 并发；完成 Docker 原生流程。
+2. Day 5：空数据复现、Pi 真实端到端、Python/Docker/Gradio 演示与发布清单收尾。
+3. 完整协作知识层另行排期；无消融收益不默认升级检索算法。检查点与退出条件见 [ROADMAP](ROADMAP.md)，旧 M0–M6 计划保留在[历史归档](docs/archive/roadmap-before-retrieval-demo.md)。
 
 ## License
 

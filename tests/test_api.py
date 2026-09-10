@@ -1,7 +1,5 @@
 import json
 
-import pytest
-
 
 def test_health_starting(client):
     r = client.get("/health")
@@ -28,6 +26,14 @@ def test_info_exposes_snapshot_and_modes(app_client):
     assert body["generation"] is None
     assert body["modes"] == []
     assert body["api_version"] == "2"
+
+
+def test_info_exposes_generation_modes(gen_client):
+    r = gen_client.get("/info")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["generation"]["model"] == "fake-model"
+    assert body["modes"] == ["rag", "agentic"]
 
 
 def test_search_returns_evidence(app_client):
@@ -80,8 +86,54 @@ def test_history_retired(app_client):
     assert r.status_code == 410
 
 
-def test_invoke_rejects_thread_id(app_client):
-    r = app_client.post("/invoke", json={"message": "hi", "mode": "rag", "thread_id": "t"})
+def test_invoke_rejects_thread_id(gen_client):
+    r = gen_client.post("/invoke", json={"message": "hi", "mode": "rag", "thread_id": "t"})
+    assert r.status_code == 422
+
+
+def test_invoke_returns_decision_protocol(gen_client):
+    r = gen_client.post("/invoke", json={"message": "hi"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["mode"] == "rag"  # 默认 rag
+    assert body["decision"] == "answered"
+    assert body["answer"] == "fake answer"
+    assert body["usage"]["model_calls"] == 1
+
+
+def test_invoke_mode_validation(gen_client):
+    assert gen_client.post("/invoke", json={"message": "hi", "mode": "chat"}).status_code == 422
+    assert gen_client.post("/invoke", json={"message": ""}).status_code == 422
+
+
+def test_invoke_agentic_mode(gen_client):
+    r = gen_client.post("/invoke", json={"message": "hi", "mode": "agentic"})
+    assert r.status_code == 200
+    assert r.json()["mode"] == "agentic"
+
+
+def test_stream_produces_terminal_done(gen_client):
+    with gen_client.stream("POST", "/stream", json={"message": "hi", "mode": "rag"}) as resp:
+        assert resp.status_code == 200
+        events = []
+        for line in resp.iter_lines():
+            if not line or not line.startswith("data: "):
+                continue
+            data = line[6:]
+            if data == "[DONE]":
+                break
+            events.append(json.loads(data))
+    types = [e["type"] for e in events]
+    assert types[0] == "status"
+    assert types[-1] == "done"
+    assert types.count("done") == 1
+    done = events[-1]
+    assert done["result"]["decision"] == "answered"
+    assert done["result"]["mode"] == "rag"
+
+
+def test_stream_rejects_thread_id(gen_client):
+    r = gen_client.post("/stream", json={"message": "hi", "mode": "rag", "thread_id": "t"})
     assert r.status_code == 422
 
 

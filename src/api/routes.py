@@ -1,9 +1,8 @@
 """L3 HTTP 路由：只调 L2 公共接口，不 import db/rag_agent 内部。"""
 import asyncio
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from fastapi.responses import StreamingResponse
 
 import config
 from api.auth import enforce_bearer
@@ -11,8 +10,8 @@ from core.app_service import AppService
 from core.retrieval_service import ServiceError
 from schema.dto import (
     ERROR_CODES,
+    AnswerRequest,
     AnswerResponse,
-    EvidenceRequest,
     EvidenceWindow,
     SearchRequest,
     SearchResponse,
@@ -22,13 +21,7 @@ from schema.dto import (
 router = APIRouter()
 
 RETRIEVAL_TIMEOUT_S = 30.0
-
-
-class InvokeBody(BaseModel):
-    model_config = {"extra": "forbid"}  # thread_id 等旧协议字段：明确拒绝，不静默忽略
-
-    message: str = Field(min_length=1, max_length=2000)
-    mode: str = Field(default="rag", pattern="^(rag|agentic)$")
+ANSWER_TIMEOUT_S = config.ANSWER_TOTAL_TIMEOUT_S
 
 
 def get_app_service(request: Request) -> AppService:
@@ -52,6 +45,20 @@ async def _run_search(svc: AppService, req: SearchRequest) -> SearchResponse:
         raise _http_error(exc) from exc
     except TimeoutError:
         raise HTTPException(status_code=504, detail={"code": "retrieval_failed", "message": "检索超时"}) from None
+
+
+async def _run_answer(svc: AppService, req: AnswerRequest) -> AnswerResponse:
+    """问答总预算 120s；超时给明确错误，后台任务保留槽位到实际结束（不叠加）。"""
+    if svc.generation is None:
+        raise _http_error(ServiceError("llm_not_configured", "生成模型未配置，仅检索可用"))
+    try:
+        async with svc.acquire_slot():
+            async with asyncio.timeout(ANSWER_TIMEOUT_S):
+                return await asyncio.to_thread(svc.generation.invoke, req)
+    except ServiceError as exc:
+        raise _http_error(exc) from exc
+    except TimeoutError:
+        raise HTTPException(status_code=429, detail={"code": "budget_exceeded", "message": "问答总超时"}) from None
 
 
 @router.get("/health", dependencies=[Depends(enforce_bearer)])
@@ -97,15 +104,33 @@ async def read_evidence(evidence_id: str, request: Request, offset: int = 0, lim
 
 
 @router.post("/invoke", response_model=AnswerResponse, dependencies=[Depends(enforce_bearer)])
-async def invoke(body: InvokeBody, request: Request):
+async def invoke(body: AnswerRequest, request: Request):
     svc = get_app_service(request)
-    raise _http_error(ServiceError("llm_not_configured", "生成模型未配置（Day 3 接入）"))
+    return await _run_answer(svc, body)
 
 
 @router.post("/stream", dependencies=[Depends(enforce_bearer)])
-async def stream(body: InvokeBody, request: Request):
+async def stream(body: AnswerRequest, request: Request):
     svc = get_app_service(request)
-    raise _http_error(ServiceError("llm_not_configured", "生成模型未配置（Day 3 接入）"))
+    if svc.generation is None:
+        raise _http_error(ServiceError("llm_not_configured", "生成模型未配置，仅检索可用"))
+
+    async def _stream_with_budget():
+        try:
+            async with svc.acquire_slot():
+                async with asyncio.timeout(ANSWER_TIMEOUT_S):
+                    async for line in svc.generation.stream(body):
+                        yield line
+        except ServiceError as exc:
+            from schema.dto import ErrorEvent
+
+            yield f"data: {ErrorEvent(code=exc.code, message=exc.message).model_dump_json()}\n\n"
+        except TimeoutError:
+            from schema.dto import ErrorEvent
+
+            yield f"data: {ErrorEvent(code='budget_exceeded', message='问答总超时').model_dump_json()}\n\n"
+
+    return StreamingResponse(_stream_with_budget(), media_type="text/event-stream")
 
 
 @router.get("/history", dependencies=[Depends(enforce_bearer)])

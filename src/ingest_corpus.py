@@ -20,7 +20,9 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 
 import config
-from core.rag_system import RAGSystem
+from db.parent_store_manager import ParentStoreManager
+from db.vector_db_manager import VectorDbManager
+from document_chunker import DocumentChunker
 from core.document_manager import DocumentManager
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -124,9 +126,11 @@ def main():
 
     paths, source_names, doc_meta, fixture_count = _load_documents()
 
-    rs = RAGSystem()
-    rs.initialize()
-    dm = DocumentManager(rs)
+    # 入库不需要生成模型：直接装配分块/存储组件（D-01）
+    vector_db = VectorDbManager()
+    parent_store = ParentStoreManager()
+    chunker = DocumentChunker()
+    dm = DocumentManager(chunker, parent_store, vector_db, config.CHILD_COLLECTION)
     print(f"[clear] 清空并重建 collection...")
     dm.clear_all()
     added, skipped = dm.add_documents(paths, source_names=source_names, doc_meta=doc_meta)
@@ -136,8 +140,8 @@ def main():
         return 1
 
     parent_count, parent_hash = _parent_store_hash()
-    # embedded 单进程只允许一个 client：复用 RAGSystem 已持有的实例
-    client = rs.vector_db.client
+    # embedded 单进程只允许一个 client：复用已持有的实例
+    client = vector_db.client
     child_count, child_hash = _child_store_hash(client, config.CHILD_COLLECTION)
     print(f"[chunks] parent_chunks={parent_count} child_chunks={child_count}")
 

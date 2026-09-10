@@ -2,23 +2,16 @@ from typing import Literal, Set
 from langchain_core.messages import SystemMessage, HumanMessage, RemoveMessage, AIMessage, ToolMessage
 from langgraph.types import Command
 from .graph_state import State, AgentState
-from .schemas import QueryAnalysis
+from .schemas import QueryAnalysis, GenerationOutput
 from .prompts import *
 from utils import estimate_context_tokens
 from db.retrieval import RetrievalHit
-from config import BASE_TOKEN_THRESHOLD, MAIN_HISTORY_MESSAGES_TO_KEEP, TOKEN_GROWTH_FACTOR
+import config
+from config import BASE_TOKEN_THRESHOLD, TOKEN_GROWTH_FACTOR
+from rag_agent.validation import ResultValidationError, build_evidence_map, format_evidence_blocks, validate_generation
+from rag_agent.budget import get_budget
+from rag_agent.structured import invoke_structured
 
-if MAIN_HISTORY_MESSAGES_TO_KEEP < 2:
-    raise ValueError("MAIN_HISTORY_MESSAGES_TO_KEEP must be at least 2.")
-
-PRE_ANSWER_HISTORY_MESSAGES_TO_KEEP = max(MAIN_HISTORY_MESSAGES_TO_KEEP - 1, 0)
-
-def _is_plain_conversation_message(msg) -> bool:
-    return (
-        isinstance(msg, (HumanMessage, AIMessage))
-        and not getattr(msg, "tool_calls", None)
-        and not getattr(msg, "name", None)
-    )
 
 def _name_internal_message(message, name):
     """Tag a subgraph-only message so it is not treated as chat history."""
@@ -34,145 +27,45 @@ def _retrieval_contexts(messages) -> list[RetrievalHit]:
             contexts.extend(h for h in artifact if isinstance(h, RetrievalHit))
     return list(dict.fromkeys(contexts))
 
-def _format_conversation(messages) -> str:
-    lines = []
-    for msg in messages:
-        role = "User" if isinstance(msg, HumanMessage) else "Assistant"
-        lines.append(f"{role}: {msg.content}")
-    return "\n".join(lines)
 
-def _remove_messages_not_in(messages, keep_ids):
-    removals = []
-    for msg in messages:
-        msg_id = getattr(msg, "id", None)
-        if isinstance(msg, SystemMessage) or not msg_id:
-            continue
-        if msg_id not in keep_ids:
-            removals.append(RemoveMessage(id=msg_id))
-    return removals
-
-def _recent_conversation(messages, pending_query="") -> list:
-    """Return recent context before the current user message.
-
-    During clarification, exclude the unresolved query and the assistant's
-    clarification request because they are represented explicitly.
-    """
-    plain_messages = [msg for msg in messages if _is_plain_conversation_message(msg)]
-    recent_messages = plain_messages[:-1]
-
-    if pending_query:
-        for index in range(len(recent_messages) - 1, -1, -1):
-            msg = recent_messages[index]
-            if isinstance(msg, HumanMessage) and str(msg.content).strip() == pending_query:
-                return recent_messages[:index]
-
-    return recent_messages
-
-def summarize_history(state: State, llm):
-    messages = state.get("messages", [])
-    updates = {"agent_answers": [{"__reset__": True}]}
-
-    if not messages:
-        return updates
-
-    plain_messages = [msg for msg in messages if _is_plain_conversation_message(msg)]
-    keep_count = PRE_ANSWER_HISTORY_MESSAGES_TO_KEEP
-    messages_to_summarize = plain_messages[:-keep_count] if len(plain_messages) > keep_count else []
-    keep_ids = {getattr(msg, "id", None) for msg in plain_messages[-keep_count:]}
-    keep_ids.discard(None)
-
-    removals = _remove_messages_not_in(messages, keep_ids)
-    if removals:
-        updates["messages"] = removals
-
-    if not messages_to_summarize:
-        return updates
-
-    existing_summary = state.get("conversation_summary", "").strip()
-    conversation = "Existing summary:\n"
-    conversation += f"{existing_summary or '(none)'}\n\n"
-    conversation += "New messages to merge into the summary:\n"
-    conversation += _format_conversation(messages_to_summarize)
-
-    summary_response = llm.invoke([
-        SystemMessage(content=get_conversation_summary_prompt()),
-        HumanMessage(content=conversation),
-    ])
-    updates["conversation_summary"] = summary_response.content.strip()
-    return updates
+# --- Main graph nodes (single-shot) ---
 
 def rewrite_query(state: State, llm):
     last_message = state["messages"][-1]
     current_query = str(last_message.content).strip()
-    conversation_summary = state.get("conversation_summary", "").strip()
-    pending_query = state.get("pendingQuery", "").strip()
-    pending_clarifications = state.get("pendingClarifications", [])
-    recent_messages = _recent_conversation(state["messages"], pending_query)
-
-    context_parts = []
-    if conversation_summary:
-        context_parts.append(f"Conversation Summary:\n{conversation_summary}")
-    if recent_messages:
-        context_parts.append(f"Recent Conversation:\n{_format_conversation(recent_messages)}")
-
-    if pending_query:
-        clarifications = [*pending_clarifications, current_query]
-        clarification_text = "\n".join(
-            f"{index}. {value}" for index, value in enumerate(clarifications, start=1)
-        )
-        context_parts.append(
-            f"Unresolved User Query:\n{pending_query}\n\n"
-            f"User Clarifications:\n{clarification_text}"
-        )
-        original_query = f"{pending_query}\nClarifications:\n{clarification_text}"
-    else:
-        clarifications = []
-        context_parts.append(f"User Query:\n{current_query}")
-        original_query = current_query
-
-    context_section = "\n\n".join(context_parts)
-    # DeepSeek 适配：不支持 json_schema 的 response_format，改用 json_object 模式 + 客户端解析。
-    # json_object 模式要求 prompt 中出现 "json" 字样，故显式追加输出格式说明。
-    llm_with_structure = llm.with_structured_output(QueryAnalysis, method="json_mode")
-    response = llm_with_structure.invoke([
+    response = invoke_structured(llm, QueryAnalysis, [
         SystemMessage(content=(
             get_rewrite_query_prompt()
             + "\n\nRespond with a single JSON object containing exactly these keys: "
             '"is_clear" (boolean), "questions" (array of strings), "clarification_needed" (string).'
         )),
-        HumanMessage(content=context_section),
+        HumanMessage(content=f"User Query:\n{current_query}"),
     ])
-    clarification_message_update = (
-        [_name_internal_message(last_message, "clarification_response")]
-        if pending_query else []
-    )
 
     if response.questions and response.is_clear:
         return {
             "questionIsClear": True,
-            "originalQuery": original_query,
-            "pendingQuery": "",
-            "pendingClarifications": [],
+            "originalQuery": current_query,
             "rewrittenQuestions": response.questions,
-            "messages": clarification_message_update,
         }
 
-    clarification = response.clarification_needed if response.clarification_needed and len(response.clarification_needed.strip()) > 10 else "I need more information to understand your question."
+    clarification = (response.clarification_needed
+                     if response.clarification_needed and len(response.clarification_needed.strip()) > 10
+                     else "I need more information to understand your question.")
     return {
         "questionIsClear": False,
         "originalQuery": "",
-        "pendingQuery": pending_query or current_query,
-        "pendingClarifications": clarifications,
         "rewrittenQuestions": [],
-        "messages": clarification_message_update + [
-            AIMessage(content=clarification, name="clarification")
-        ],
+        "decision": "clarification_required",
+        "clarification_question": clarification,
+        "answer": "",
+        "limitations": [],
+        "citations": [],
     }
 
-def request_clarification(state: State):
-    return {}
 
-# --- Agent Nodes ---
+# --- Agent (subgraph) Nodes ---
+
 def orchestrator(state: AgentState, llm_with_tools):
     context_summary = state.get("context_summary", "").strip()
     sys_msg = SystemMessage(content=get_orchestrator_prompt())
@@ -185,12 +78,12 @@ def orchestrator(state: AgentState, llm_with_tools):
         force_search = HumanMessage(content="YOU MUST CALL 'search_child_chunks' AS THE FIRST STEP TO ANSWER THIS QUESTION.")
         response = llm_with_tools.invoke([sys_msg] + summary_injection + [human_msg, force_search])
         response = _name_internal_message(response, "agent_response")
-        return {"messages": [human_msg, response], "tool_call_count": len(response.tool_calls or []), "iteration_count": 1}
+        return {"messages": [human_msg, response]}
 
     response = llm_with_tools.invoke([sys_msg] + summary_injection + state["messages"])
     response = _name_internal_message(response, "agent_response")
-    tool_calls = response.tool_calls if hasattr(response, "tool_calls") else []
-    return {"messages": [response], "tool_call_count": len(tool_calls) if tool_calls else 0, "iteration_count": 1}
+    return {"messages": [response]}
+
 
 def fallback_response(state: AgentState, llm):
     seen = set()
@@ -221,6 +114,7 @@ def fallback_response(state: AgentState, llm):
     response = llm.invoke([SystemMessage(content=get_fallback_response_prompt()), HumanMessage(content=prompt_content)])
     response = _name_internal_message(response, "agent_response")
     return {"messages": [response]}
+
 
 def should_compress_context(state: AgentState) -> Command[Literal["compress_context", "orchestrator"]]:
     messages = state["messages"]
@@ -258,6 +152,7 @@ def should_compress_context(state: AgentState) -> Command[Literal["compress_cont
         },
         goto=goto,
     )
+
 
 def compress_context(state: AgentState, llm):
     messages = state["messages"]
@@ -298,6 +193,7 @@ def compress_context(state: AgentState, llm):
 
     return {"context_summary": new_summary, "messages": [RemoveMessage(id=m.id) for m in messages[1:]]}
 
+
 def collect_answer(state: AgentState):
     last_message = state["messages"][-1]
     is_valid = isinstance(last_message, AIMessage) and last_message.content and not last_message.tool_calls
@@ -311,24 +207,62 @@ def collect_answer(state: AgentState):
             "contexts": state.get("retrieved_contexts", []),
         }]
     }
-# --- End of Agent Nodes---
 
-def aggregate_answers(state: State, llm):
-    messages = state.get("messages", [])
-    plain_messages = [msg for msg in messages if _is_plain_conversation_message(msg)]
-    keep_ids = {getattr(msg, "id", None) for msg in plain_messages[-PRE_ANSWER_HISTORY_MESSAGES_TO_KEEP:]}
-    keep_ids.discard(None)
-    removals = _remove_messages_not_in(messages, keep_ids)
 
-    if not state.get("agent_answers"):
-        return {"messages": removals + [AIMessage(content="No answers were generated.")]}
+# --- Main graph: aggregate + validate ---
 
-    sorted_answers = sorted(state["agent_answers"], key=lambda x: x["index"])
+def aggregate_answers(state: State, llm, evidence_store):
+    """把子图答案与本次实际检索到的证据合成单次终态（结构化 decision + 候选引用）。"""
+    all_contexts: list[RetrievalHit] = []
+    for ans in state.get("agent_answers", []):
+        all_contexts.extend(ans.get("contexts", []))
+    all_contexts = list(dict.fromkeys(all_contexts))
 
-    formatted_answers = ""
-    for i, ans in enumerate(sorted_answers, start=1):
-        formatted_answers += (f"\nRetrieved response {i}:\n"f"{ans['answer']}\n")
+    evidence_map = build_evidence_map(all_contexts, evidence_store)
+    context_text = format_evidence_blocks(evidence_map, config.RAG_CONTEXT_MAX_CHARS)
 
-    user_message = HumanMessage(content=f"""Original user question: {state["originalQuery"]}\nRetrieved answers:{formatted_answers}""")
-    synthesis_response = llm.invoke([SystemMessage(content=get_aggregation_prompt()), user_message])
-    return {"messages": removals + [AIMessage(content=synthesis_response.content)]}
+    sorted_answers = sorted(state.get("agent_answers", []), key=lambda x: x["index"])
+    formatted_answers = "\n".join(
+        f"Sub-question {i}: {ans['question']}\nSub-answer: {ans['answer']}"
+        for i, ans in enumerate(sorted_answers, start=1)
+    ) or "(no sub-answers)"
+
+    feedback = state.get("repair_feedback", "")
+    user_parts = [
+        f"Original user question: {state['originalQuery']}",
+        "",
+        formatted_answers,
+        "",
+        "Evidence retrieved during this request:",
+        context_text,
+    ]
+    if feedback:
+        user_parts.append(f"上一轮输出未通过引用校验，请修正：{feedback}")
+    user_message = HumanMessage(content="\n\n".join(user_parts))
+
+    gen = invoke_structured(llm, GenerationOutput, [
+        SystemMessage(content=get_aggregation_prompt()), user_message,
+    ])
+
+    return {"generation": gen, "evidence_map": evidence_map, "context_text": context_text}
+
+
+def validate_result(state: State, config=None):
+    """主图终态校验：引用机械校验 + 预算内修复一次，仍失败抛 ResultValidationError。"""
+    gen = state.get("generation")
+    if gen is None:
+        raise ResultValidationError(["缺少生成结果"])
+    citations, errors = validate_generation(gen, state.get("evidence_map", {}))
+    if not errors:
+        return {
+            "decision": gen.decision,
+            "answer": gen.answer,
+            "clarification_question": gen.clarification_question,
+            "limitations": gen.limitations,
+            "citations": [c.model_dump() for c in citations],
+            "repair_feedback": "",
+        }
+    budget = get_budget(config)
+    if budget.reserve_repair():
+        return {"repair_feedback": "；".join(errors)}
+    raise ResultValidationError(errors)

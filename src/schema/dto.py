@@ -110,6 +110,18 @@ class Usage(BaseModel):
     estimated_cost_cny: float | None = None
 
 
+class AnswerRequest(BaseModel):
+    """单次问答请求：mode 默认 rag；thread_id 等旧协议字段明确拒绝。"""
+
+    model_config = {"extra": "forbid"}
+
+    message: str = Field(min_length=1, max_length=2000)
+    mode: Literal["rag", "agentic"] = "rag"
+    include_debug_artifact: bool = Field(
+        default=False, description="debug/eval 模式：返回检索证据等诊断 artifact"
+    )
+
+
 class AnswerResponse(BaseModel):
     request_id: str
     index_id: str = Field(pattern=INDEX_ID_RE)
@@ -142,6 +154,42 @@ class ErrorDetail(BaseModel):
     request_id: str | None = None
 
 
+# --- SSE 事件（问答流式协议；terminal 为 done/error，恰好其一） ---
+
+
+class StatusEvent(BaseModel):
+    type: Literal["status"] = "status"
+    stage: str = Field(description="进度阶段（应用语义，节点名仅作装饰）")
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class ToolCallEvent(BaseModel):
+    type: Literal["tool_call"] = "tool_call"
+    name: str
+    id: str | None = None
+    args: dict[str, Any] = Field(default_factory=dict)
+
+
+class ToolResultEvent(BaseModel):
+    type: Literal["tool_result"] = "tool_result"
+    id: str | None = None
+    preview: str = Field(default="", description="工具结果短预览")
+
+
+class DoneEvent(BaseModel):
+    """校验后的最终结果；answer 是已校验文本，不是实时 token 流。"""
+
+    type: Literal["done"] = "done"
+    result: AnswerResponse
+
+
+class ErrorEvent(BaseModel):
+    type: Literal["error"] = "error"
+    code: str
+    message: str
+    request_id: str | None = None
+
+
 ERROR_CODES = {
     "invalid_request": 400,
     "not_authenticated": 401,
@@ -151,6 +199,7 @@ ERROR_CODES = {
     "retrieval_failed": 502,
     "llm_not_configured": 503,
     "upstream_failed": 502,
+    "result_validation_failed": 502,
     "budget_exceeded": 429,
     "response_too_large": 413,
     "busy": 503,

@@ -52,15 +52,52 @@ def make_retrieval_service():
     return RetrievalService(_Retriever([hit]), store)
 
 
-def make_app_service():
-    return AppService(
+class _FakeGeneration:
+    """stub 生成服务：返回固定 AnswerResponse（API/MCP 契约测试用）。"""
+
+    def __init__(self):
+        self.calls = []
+
+    def metadata(self):
+        return {"model": "fake-model", "base_url": "http://fake"}
+
+    def modes(self):
+        return ["rag", "agentic"]
+
+    def invoke(self, req):
+        from schema.dto import AnswerResponse, Usage
+
+        self.calls.append(req.model_dump())
+        return AnswerResponse(
+            request_id="r-test",
+            index_id="sha256:" + "b" * 64,
+            mode=req.mode,
+            decision="answered",
+            answer="fake answer",
+            citations=[],
+            usage=Usage(input_tokens=1, output_tokens=2, model_calls=1, estimated_cost_cny=0.0),
+        )
+
+    async def stream(self, req):
+        import json
+
+        yield 'data: {"type":"status","stage":"started","data":{}}\n\n'
+        result = self.invoke(req)
+        yield f"data: {json.dumps({'type': 'done', 'result': result.model_dump()})}\n\n"
+        yield "data: [DONE]\n\n"
+
+
+def make_app_service(generation=True):
+    svc = AppService(
         snapshot=Snapshot("sha256:" + "b" * 64, {
             "dense_model": "D", "sparse_model": "S",
             "parent_count": 1, "child_count": 1,
             "corpus_manifest_sha256": "c" * 64,
         }),
         retrieval_service=make_retrieval_service(),
+        generation=_FakeGeneration() if generation else None,
     )
+    return svc
 
 
 @pytest.fixture
@@ -76,7 +113,18 @@ def app_client():
     """Client with a stubbed AppService injected (lifespan bypassed)."""
     import api.main as m
 
-    svc = make_app_service()
+    svc = make_app_service(generation=False)
+    m.app.state.app_service = svc
+    yield TestClient(m.app)
+    m.app.state.app_service = None
+
+
+@pytest.fixture
+def gen_client():
+    """Client with generation-enabled stubbed AppService."""
+    import api.main as m
+
+    svc = make_app_service(generation=True)
     m.app.state.app_service = svc
     yield TestClient(m.app)
     m.app.state.app_service = None

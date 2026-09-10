@@ -1,8 +1,9 @@
 from typing import List, Annotated, Set
 from langgraph.graph import MessagesState
-import operator
 
 from db.retrieval import RetrievalHit
+from rag_agent.schemas import GenerationOutput
+
 
 def accumulate_or_reset(existing: List[dict], new: List[dict]) -> List[dict]:
     if new and any(item.get('__reset__') for item in new):
@@ -15,18 +16,29 @@ def set_union(a: Set[str], b: Set[str]) -> Set[str]:
 def append_unique(existing: List[RetrievalHit], new: List[RetrievalHit]) -> List[RetrievalHit]:
     return list(dict.fromkeys(existing + new))
 
+
 class State(MessagesState):
-    """State for main agent graph"""
+    """Main graph state（单次请求语义：无会话历史、无 pending/interrupt）。"""
+
     questionIsClear: bool = False
-    conversation_summary: str = ""
     originalQuery: str = ""
-    pendingQuery: str = ""
-    pendingClarifications: List[str] = []
     rewrittenQuestions: List[str] = []
     agent_answers: Annotated[List[dict], accumulate_or_reset] = []
+    # 单次终态（decision 协议）
+    generation: GenerationOutput | None = None
+    evidence_map: dict[str, RetrievalHit] = {}
+    context_text: str = ""
+    repair_feedback: str = ""
+    decision: str = ""
+    answer: str = ""
+    clarification_question: str = ""
+    limitations: List[str] = []
+    citations: List[dict] = []
+
 
 class AgentState(MessagesState):
-    """State for individual agent subgraph"""
+    """Individual agent subgraph state."""
+
     question: str = ""
     question_index: int = 0
     context_summary: str = ""
@@ -34,5 +46,3 @@ class AgentState(MessagesState):
     retrieved_contexts: Annotated[List[RetrievalHit], append_unique] = []
     final_answer: str = ""
     agent_answers: List[dict] = []
-    tool_call_count: Annotated[int, operator.add] = 0
-    iteration_count: Annotated[int, operator.add] = 0

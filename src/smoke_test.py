@@ -1,11 +1,10 @@
-"""T1 冒烟测试：ingest 一篇公开语料 → 提一个问题 → 打印最终回答。
+"""T1 冒烟测试：无生成模型时验证检索，有生成模型时跑 rag + agentic 单次问答。
 
-前提: 根目录 .env 已配置 DEEPSEEK_API_KEY；语料已由 data/sync_sources.py 同步。
+前提: 语料已由 ingest_corpus.py 入库（生成模型凭据可选）。
 运行: cd src && uv run --python ../.venv/bin/python smoke_test.py
 """
 import os
 import sys
-from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -13,29 +12,31 @@ sys.path.insert(0, os.path.dirname(__file__))
 os.environ.pop("HF_ENDPOINT", None)
 
 from dotenv import load_dotenv
+
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 
-from langchain_core.messages import HumanMessage
-from core.rag_system import RAGSystem
-from core.document_manager import DocumentManager
+from core.app_service import build_app_service
+from schema.dto import AnswerRequest, SearchRequest
 
-TEST_DOC = str(Path(__file__).resolve().parent.parent / "data" / "raw" / "docs" / "chapter4" / "14_query_rewriting.md")
 QUESTION = "什么是 HyDE？"
 
-rs = RAGSystem()
-rs.initialize()
-dm = DocumentManager(rs)
-added, skipped = dm.add_documents([TEST_DOC])
-print(f"[ingest] added={added} skipped={skipped}")
+svc = build_app_service()
+print(f"[ready] index_id={svc.index_id[:16]}… generation={'configured' if svc.llm_configured else 'disabled'}")
 
-state = rs.agent_graph.invoke(
-    {"messages": [HumanMessage(content=QUESTION)]},
-    config=rs.get_config(),
-)
+search = svc.retrieval.search(SearchRequest(query="HyDE 查询改写", k=3))
+print(f"[search] returned_k={search.returned_k} truncated={search.truncated}")
+for hit in search.hits[:3]:
+    print(f"  - {hit.source} @ {hit.span.start}:{hit.span.end} ({hit.evidence_id})")
 
-pending = rs.agent_graph.get_state(rs.get_config()).next
-if pending:
-    print(f"[interrupt] 图在节点挂起等待输入: {list(pending)}")
+if not svc.llm_configured:
+    print("[answer] 未配置生成模型，跳过问答（仅检索冒烟通过）")
+    sys.exit(0)
 
-final = state["messages"][-1]
-print(f"[answer] {final.content}")
+for mode in ("rag", "agentic"):
+    resp = svc.generation.invoke(AnswerRequest(message=QUESTION, mode=mode))
+    print(f"[{mode}] decision={resp.decision} citations={len(resp.citations)} "
+          f"tokens={resp.usage.input_tokens}/{resp.usage.output_tokens} "
+          f"cost={resp.usage.estimated_cost_cny}")
+    print(f"  answer: {resp.answer[:120]}{'…' if len(resp.answer) > 120 else ''}")
+    for c in resp.citations:
+        print(f"  cite {c.citation_id} -> {c.evidence_id} span={c.span.start}:{c.span.end} quote={c.quote[:40]!r}")

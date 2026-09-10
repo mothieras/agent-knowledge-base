@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from api.mcp_app import create_mcp_server
-from conftest import make_app_service
+from conftest import _FakeGeneration, make_app_service, make_retrieval_service
 
 
 def _make_context(svc) -> "Context":
@@ -28,21 +28,40 @@ def _make_context(svc) -> "Context":
 
 @pytest.fixture
 def mcp_server():
-    return create_mcp_server()
+    return create_mcp_server(include_ask=False)
+
+
+@pytest.fixture
+def mcp_server_with_ask():
+    return create_mcp_server(include_ask=True)
 
 
 @pytest.fixture
 def mcp_ctx():
-    return _make_context(make_app_service())
+    return _make_context(make_app_service(generation=False))
 
 
-def test_tools_registered(mcp_server):
+@pytest.fixture
+def mcp_ctx_gen():
+    svc = make_app_service(generation=True)
+    svc.generation = _FakeGeneration()
+    return _make_context(svc)
+
+
+def test_tools_registered_without_generation(mcp_server):
     tools = asyncio.run(mcp_server.list_tools())
     names = {t.name for t in tools}
+    # 未启用生成能力时不发布 ask_knowledge
     assert names == {"search_knowledge", "get_context"}
-    # structured_output=True 发布 outputSchema（Pi 结构化消费依据）
     by_name = {t.name: t for t in tools}
     assert by_name["search_knowledge"].output_schema is not None
+
+
+def test_ask_tool_published_when_generation_enabled(mcp_server_with_ask):
+    tools = asyncio.run(mcp_server_with_ask.list_tools())
+    names = {t.name for t in tools}
+    assert names == {"search_knowledge", "get_context", "ask_knowledge"}
+    assert {t.name: t for t in tools}["ask_knowledge"].output_schema is not None
 
 
 def test_search_knowledge_returns_structured_content(mcp_server, mcp_ctx):
@@ -91,4 +110,37 @@ def test_search_knowledge_validates_args(mcp_server, mcp_ctx):
     with pytest.raises(Exception):
         asyncio.run(
             mcp_server.call_tool("search_knowledge", {"query": "", "k": 7}, mcp_ctx)
+        )
+
+
+def test_ask_knowledge_returns_decision_protocol(mcp_server_with_ask, mcp_ctx_gen):
+    result = asyncio.run(
+        mcp_server_with_ask.call_tool(
+            "ask_knowledge", {"message": "什么是 RAG？", "mode": "agentic"}, mcp_ctx_gen
+        )
+    )
+    assert not result.is_error
+    sc = result.structured_content
+    assert sc["decision"] == "answered"
+    assert sc["mode"] == "agentic"
+    assert sc["usage"]["model_calls"] == 1
+    # 文本部分只给摘要
+    assert "decision=answered" in result.content[0].text
+
+
+def test_ask_knowledge_not_available_without_generation(mcp_server_with_ask, mcp_ctx):
+    with pytest.raises(Exception):
+        asyncio.run(
+            mcp_server_with_ask.call_tool(
+                "ask_knowledge", {"message": "什么是 RAG？", "mode": "rag"}, mcp_ctx
+            )
+        )
+
+
+def test_ask_knowledge_validates_mode(mcp_server_with_ask, mcp_ctx_gen):
+    with pytest.raises(Exception):
+        asyncio.run(
+            mcp_server_with_ask.call_tool(
+                "ask_knowledge", {"message": "x", "mode": "chat"}, mcp_ctx_gen
+            )
         )
