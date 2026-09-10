@@ -29,7 +29,7 @@ data/
 
 ## 受治理 fixture
 
-[`fixtures/`](fixtures/) 是项目自有、随仓库 MIT 许可分发的虚构政策文档（"星辰科技"为虚构主体），与第三方语料刻意异域。当前两对 active/expired 版本（API 限流政策、数据保留政策），用于验证 manifest metadata（version/effective_date/expired_date/priority）全链路传播，并为版本冲突评测（ROADMAP M2）提供素材。
+[`fixtures/`](fixtures/) 是项目自有、随仓库 MIT 许可分发的虚构政策文档（"星辰科技"为虚构主体），与第三方语料刻意异域。当前两对 active/expired 版本（API 限流政策、数据保留政策），用于验证 manifest metadata（version/effective_date/expired_date/priority）全链路传播，并为版本冲突评测提供素材。
 
 - 由 [`fixtures/manifest.json`](fixtures/manifest.json) 独立治理，不参与 `sync_sources.py` 的第三方 SHA 同步与清理。
 - 入库时与第三方语料进同一 collection（`ingest_corpus.py` 自动合并）。

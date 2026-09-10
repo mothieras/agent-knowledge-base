@@ -22,11 +22,9 @@
 
 文档分工：
 
-- [产品需求 PRD](docs/PRD.md)：已确认目标、五天范围、顺延项和验收场景。
-- [技术设计 DESIGN](docs/DESIGN.md)：分层、模型可选、证据/HTTP/MCP 契约、单次协议与运行限制；均为实施目标。
-- [五天路线计划](ROADMAP.md)：Day 1–5 检查点、评测冻结、发布门禁与后续阶段。
+- [作战计划](PLAN.md)：定位（最终形态为给 Agent 用的自托管知识库）、收尾两步、评测纪律与范围变更原则。原 PRD / DESIGN / ROADMAP 已归档至 [docs/archive/](docs/archive/)，仅作追溯。
 
-**以下“已实现能力”、当前接口和历史报告仍只描述代码现状。新增设计文档不代表 MCP、独立纯检索、普通 RAG 单图、认证或 Docker 已经交付。**
+**以下“已实现能力”、当前接口和历史报告描述代码现状与验证证据；未声明的能力与后续范围以 [作战计划](PLAN.md) 为准。**
 
 ## 这个 fork 做什么
 
@@ -334,7 +332,7 @@ src/
 data/              governed corpus + manifest
 eval/              golden set、挑战集、metrics、runner 和 reports
 tests/             API/schema/graph/validation tests
-docs/              confirmed PRD, target design and historical roadmap
+docs/              归档：原 PRD/DESIGN/ROADMAP、检查点与旧路线
 ```
 
 ## 当前边界与路线图
@@ -348,9 +346,9 @@ docs/              confirmed PRD, target design and historical roadmap
 
 ### 下一步
 
-1. Day 4：按冻结契约跑直接检索、单图与双图比较；审计引用/拒答/澄清 badcase；规模快照与 3 并发；完成 Docker 原生流程。
-2. Day 5：空数据复现、Pi 真实端到端、Python/Docker/Gradio 演示与发布清单收尾。
-3. 完整协作知识层另行排期；无消融收益不默认升级检索算法。检查点与退出条件见 [ROADMAP](ROADMAP.md)，旧 M0–M6 计划保留在[历史归档](docs/archive/roadmap-before-retrieval-demo.md)。
+1. 第一步，对照实验定稿：最终 commit 重跑双基线并修正基线表、badcase 审计、规模与并发实测，产出对照报告。
+2. 第二步，发布：Docker 原生流程、Pi 实测端到端、空数据复现、README 收尾与发布清单。
+3. 发布后第一优先是版本/有效期过滤；知识库本体与检索消融另行排期。收尾细节与评测纪律见 [作战计划](PLAN.md)，旧 M0–M6 计划保留在[历史归档](docs/archive/roadmap-before-retrieval-demo.md)。
 
 ## License
 
