@@ -24,7 +24,7 @@
 
 ## 2. 起点和已知债务
 
-规划时工作树 HEAD 为 `c6eb423`，不是未来基线绑定值。每次真实报告必须记录执行时的实际 commit/dirty 状态。
+规划时工作树 HEAD 为 `2771a33`，不是未来基线绑定值。每次真实报告必须记录执行时的实际 commit/dirty 状态。
 
 可复用：M1 `Retriever`/`RetrievalHit`、父子块/精确 span、当前 Qdrant hybrid、双图、HTTP/SSE/client/Gradio、30 题及历史报告。
 

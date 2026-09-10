@@ -1,6 +1,6 @@
 # Day 1 检查点报告：范围与评测契约冻结
 
-> 日期：2026-09-07 ｜ git commit：`c6eb42379afd9d1a9974af5bf4b977796bdff6f2`（工作树含未提交的 docs/PRD、DESIGN、ROADMAP 及本报告新增资产）
+> 日期：2026-09-07 ｜ git commit：`2771a33147e4ee6edd427cc6443c7de8dfa4cb91`（工作树含未提交的 docs/PRD、DESIGN、ROADMAP 及本报告新增资产）
 > 检查点依据：[ROADMAP](../ROADMAP.md) Day 1；本报告是 Day 1 必须留下的证据，不是能力完成声明。
 
 ## 1. 冻结产物

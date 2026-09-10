@@ -2,7 +2,7 @@
   "bindings": {
     "mode": "agentic",
     "date": "2026-09-10",
-    "git_commit": "ca3cee45bb03104ca597cfafc1f3fa2659e529d6",
+    "git_commit": "c06487d2423c4d1be9b24f317ebf842cd4bb368c",
     "manifest_hash": "5c702f3c358fd1b5",
     "golden_lines": 30,
     "index_points": 354,

@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| git commit | `ca3cee45bb03104ca597cfafc1f3fa2659e529d6` |
+| git commit | `c06487d2423c4d1be9b24f317ebf842cd4bb368c` |
 | manifest hash (sha256:16) | `5c702f3c358fd1b5` |
 | golden_set 行数 | 30 |
 | 索引 points | 354 |

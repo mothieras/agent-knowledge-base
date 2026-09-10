@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 |---|---|
-| git commit | `28a725ff2559cb2c31a4095bd52eb54e896e98ab` |
+| git commit | `8998bcc3c7551db40ffd261f01c6a036a9cd8617` |
 | index_id | `sha256:0df9fbfaeecaaf2bef1f3a78b2db71aad767935a98aafaf398792fcdc2a34325` |
 | parent/child chunks | 46 / 354 |
 | dense / sparse | Qwen/Qwen3-Embedding-0.6B / Qdrant/bm25 |
