@@ -9,13 +9,6 @@ qdrant_db/
 markdown_docs/
 parent_store/
 eval/scale_artifacts/
-/docs/*
-!/docs/PRD.md
-!/docs/DESIGN.md
-!/docs/archive/
-!/docs/archive/*
-!/docs/archive/roadmap-before-retrieval-demo.md
-!/docs/day1_checkpoint.md
 .superpowers/
 .commandcode/
 AGENTS.md

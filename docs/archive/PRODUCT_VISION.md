@@ -1,6 +1,6 @@
 # 产品构想 vs 代码现状对照（原型讨论底稿）
 
-> **历史讨论，已被新的需求决策替代。** 当前定位与计划见 [PLAN.md](PLAN.md)；原 PRD/DESIGN/ROADMAP 已归档至 [docs/archive/](docs/archive/)。下文原样保留供追溯，不再作为实现指令；其中企业级、内置 Web/Chrome 工具与多轮恢复不属于新产品范围。
+> **历史讨论，已被新的需求决策替代。** 当前定位与计划见 [PLAN.md](../../PLAN.md)；原 PRD/DESIGN/ROADMAP 与本文同在 docs/archive/。下文原样保留供追溯，不再作为实现指令；其中企业级、内置 Web/Chrome 工具与多轮恢复不属于新产品范围。
 
 > 状态：讨论底稿，非路线图承诺。基于 `main` @ `4942baea`（2026-09-06）快照核对。
 > 本文不改变根 README / PLAN 的「已完成 vs 计划」表述；仅当构想落地后才更新 README。
