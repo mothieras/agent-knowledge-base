@@ -380,7 +380,7 @@ docs/              归档：原 PRD/DESIGN/ROADMAP、检查点与旧路线
 | Bearer 鉴权（HTTP 与 MCP：无/错凭据 401、正确凭据 200） | 通过 |
 | 容器内自入库（空卷冷启动，经代理下载模型后入库） | （见下） |
 | fresh clone 空数据复现（宿主机：clone→依赖→入库 46/354 与质量索引一致→启动→HTTP+MCP smoke） | 通过（检索侧；生成模型未配置路径） |
-| ask_knowledge 冒烟（MCP 问答委托） | 未执行：DeepSeek 账户余额耗尽（402），充值后补跑；问答路径已由 51 条基线 answered+引用机械校验覆盖 |
+| ask_knowledge 冒烟（MCP 问答委托） | 通过：decision=answered、citations=3、usage 1175/948 tok，经 MCP 结构化输出返回 |
 | Pi 实测端到端（工具发现、Bearer、search/get_context、答案消费） | 未执行：需在外部 MCP 客户端操作；服务端 Bearer 与协议冒烟已通过 |
 
 ### 尚未作为已完成能力声明
