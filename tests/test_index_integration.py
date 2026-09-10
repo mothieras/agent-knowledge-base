@@ -1,4 +1,4 @@
-"""真实本地索引集成测试（ROADMAP M1 证据契约）。
+"""真实本地索引集成测试（证据契约）。
 
 前置：本机已运行 `src/ingest_corpus.py`（qdrant_db/ + parent_store/ 存在）。
 fresh clone 无索引时整模块 skip。验证的是真实 embedding + 真实 Qdrant payload

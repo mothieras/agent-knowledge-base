@@ -37,7 +37,7 @@ SERVER_READY_TIMEOUT_S = 300
 CONCURRENCY = 3          # = AppService.MAX_CONCURRENT_QUERIES（设计容量边界）
 N_WARMUP = 5
 N_SEQ_BASELINE = 30
-N_CONCURRENT_QUERIES = 105   # ≥100（PLAN 收尾一步）；3 worker × 35
+N_CONCURRENT_QUERIES = 105   # ≥100（PLAN 规模实测要求）；3 worker × 35
 
 sys.path.insert(0, str(REPO_ROOT))   # git_commit() 用
 

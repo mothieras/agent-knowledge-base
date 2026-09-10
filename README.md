@@ -305,11 +305,11 @@ env -u ALL_PROXY -u all_proxy ../.venv/bin/python run_challenge.py
 | Clarification rate（HITL 暂停口径） | 0.800 | 0.600 |
 | Latency P50 / P95 | 15.11s / 24.85s | 14.99s / 27.03s |
 
-完整历史报告：[2026-09-01](eval/reports/baseline-2026-09-01.md)、[2026-08-28](eval/reports/baseline-2026-08-28.md)、[2026-08-23](eval/reports/baseline-all-in-rag-2026-08-23.md)（M0 冻结）。
+完整历史报告：[2026-09-01](eval/reports/baseline-2026-09-01.md)、[2026-08-28](eval/reports/baseline-2026-08-28.md)、[2026-08-23](eval/reports/baseline-all-in-rag-2026-08-23.md)（初版冻结）。
 
 **历史指标口径提醒**：旧 runner/报告中的 `refusal.precision` 实际计算 `1 - false_refusals / answerable_n`，不是标准拒答 precision；新 decision 协议使用标准 TP/(TP+FP)，二者不能直接比较。旧 HITL 的澄清暂停率与新单次澄清率也是不同语义，并列报告不直接同比。
 
-检索挑战集（40 题直接检索）回归锚点 Recall@5=1.000 与 Day 1 基线持平（见 [`eval/reports/challenge-2026-09-10.md`](eval/reports/challenge-2026-09-10.md)），全量指标 Recall@5=0.950、MRR=0.933、2 题 hard-negative 泄漏与 Day 2 持平。Recall 1.000 只代表这套固定语料与 golden set，不是对开放问题的泛化承诺。
+检索挑战集（40 题直接检索）回归锚点 Recall@5=1.000 与冻结基线持平（见 [`eval/reports/challenge-2026-09-10.md`](eval/reports/challenge-2026-09-10.md)），全量指标 Recall@5=0.950、MRR=0.933、2 题 hard-negative 泄漏与 2026-09-09 场持平。Recall 1.000 只代表这套固定语料与 golden set，不是对开放问题的泛化承诺。
 
 ## 测试
 
@@ -365,7 +365,7 @@ docs/              归档：原 PRD/DESIGN/ROADMAP、检查点与旧路线
 |---|---|
 | 评测口径审计：runner misrefusal/overclarify 分母对齐冻结契约（明确可答 n=20）、README 基线表改脚本同场生成、acceptance.yaml threshold 0.2→0.4 勘误（冻结当日笔误） | 通过 |
 | 最终 commit 重跑 rag/agentic 双基线（同 index/模型/参数，30/30、0 ERROR 0 SKIP） | 通过 |
-| 40 题挑战集复跑（回归锚点 Recall@5=1.000 与 Day 1 持平） | 通过 |
+| 40 题挑战集复跑（回归锚点 Recall@5=1.000 与冻结基线持平） | 通过 |
 | badcase 审计（rag 4 例误拒逐条归因、歧义题澄清合理性、挑战集 2 例泄漏） | 通过（写入对照报告） |
 | 规模与并发实测（100 文档/12,098 块合成快照，3 并发 126/126 有效，0 错误 0 busy） | 通过 |
 

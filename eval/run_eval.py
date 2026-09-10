@@ -1,4 +1,4 @@
-"""T4 评测驱动（单次 decision 协议）：golden set 跑 L2 AnswerService。
+"""评测驱动（单次 decision 协议）：golden set 跑 L2 AnswerService。
 
 模式：--mode rag|agentic（默认 agentic，与历史基线同口径）。每题独立请求，
 记录 decision/answer/citations/证据/usage/延迟；引用机械有效性单独校验。

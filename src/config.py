@@ -39,7 +39,7 @@ GRAPH_RECURSION_LIMIT = 100
 BASE_TOKEN_THRESHOLD = 2000
 TOKEN_GROWTH_FACTOR = 0.9
 
-# --- Generation / Budget Configuration (DESIGN 3.2，Day 1 冻结) ---
+# --- Generation / Budget Configuration (DESIGN 3.2，2026-09-07 冻结) ---
 MAX_SUBQUESTIONS = 3          # 双图最多拆解出的子问题数
 MAX_CITATION_REPAIRS = 1      # 引用校验失败最多修复次数
 LLM_MAX_RETRIES = 1           # 网络瞬时失败重试次数（ChatOpenAI max_retries）

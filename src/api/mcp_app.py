@@ -5,7 +5,7 @@
 摘要式文本会让接地场景拿不到证据正文，故文本通道也承载完整 JSON）。
 鉴权覆盖整个 ASGI mount（含 transport 各 HTTP 方法），不依赖 FastAPI 路由依赖。
 
-2.x 要点（Day 1 验证）：MCPServer 替代 FastMCP；lifespan 必须
+2.x 要点（2026-09-07 实测）：MCPServer 替代 FastMCP；lifespan 必须
 ``async with mcp.session_manager.run()``；``streamable_http_path='/'`` 挂载到
 ``/mcp`` 得到单层端点；工具返回 ``CallToolResult(content=[TextContent(完整JSON)],
 structured_content=dto)``。

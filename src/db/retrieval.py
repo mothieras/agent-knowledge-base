@@ -8,7 +8,7 @@ to live across ``tools`` / ``nodes`` / ``events`` / ``run_eval``: the
 ``parent::`` / ``search::`` string protocol, and the eval ``(source, content)``
 tuple. Carrying manifest metadata (version / effective / expired / priority)
 plus chunk identity (``chunk_id``, ``span_start``/``span_end`` into the parent
-text) lets version filtering (roadmap M3) and citation (M4) land behind this
+text) lets version filtering and citation upgrades land behind this
 seam without re-shaping state.
 
 ``Retriever`` is the seam itself. Two adapters justify it:
@@ -95,7 +95,7 @@ class QdrantRetriever:
         results = self._collection.similarity_search(
             query, k=k, score_threshold=config.RETRIEVAL_SCORE_THRESHOLD
         )
-        # 单次融合调用拿不到 per-channel 归因；真实归因留 M3 消融，先如实标 hybrid
+        # 单次融合调用拿不到 per-channel 归因；真实归因留待检索消融，先如实标 hybrid
         return [
             replace(hit_from_stored(doc.page_content, doc.metadata), retrieval_channel="hybrid")
             for doc in results

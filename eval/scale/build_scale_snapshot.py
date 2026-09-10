@@ -1,6 +1,6 @@
 """规模实测·合成语料快照构建：生成 → 入库 → 快照 manifest → 查询集。
 
-受控合成规模（PLAN 收尾一步）：约 100 文档 / 1 万 child chunks，与质量语料
+受控合成规模（按 PLAN 规模实测要求）：约 100 文档 / 1 万 child chunks，与质量语料
 完全隔离——语料、parent store、Qdrant 全部落在 eval/scale_artifacts/ 下，
 通过 QDRANT_DB_PATH / PARENT_STORE_PATH 环境变量在进程启动前覆盖（见
 src/config.py），不触碰质量索引。

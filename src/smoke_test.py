@@ -1,4 +1,4 @@
-"""T1 冒烟测试：无生成模型时验证检索，有生成模型时跑 rag + agentic 单次问答。
+"""冒烟测试：无生成模型时验证检索，有生成模型时跑 rag + agentic 单次问答。
 
 前提: 语料已由 ingest_corpus.py 入库（生成模型凭据可选）。
 运行: cd src && uv run --python ../.venv/bin/python smoke_test.py

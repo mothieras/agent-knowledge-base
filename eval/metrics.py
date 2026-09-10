@@ -1,4 +1,4 @@
-"""T4 评测指标：检索层自算 + ragas 封装(或兜底 judge) + 拒答/澄清 judge。
+"""评测指标：检索层自算 + ragas 封装(或兜底 judge) + 拒答/澄清 judge。
 
 检索层命中判定锚点: expected_sources 文件名级匹配(metadata.source == source，
 带 #anchor 的条目按去锚后路径比)；过期/背景源算命中，另计 expired_hits 信号。
@@ -16,7 +16,7 @@ PRICE_IN_PER_M = 0.28
 PRICE_OUT_PER_M = 1.68
 
 # data/fixtures/manifest.json 中 expired_date 非空的受治理 fixture 源；
-# golden set 30 题不应命中它们，expired_hit_items 是 M3 过滤门禁的前置信号
+# golden set 30 题不应命中它们，expired_hit_items 是版本过滤门禁的前置信号
 EXPIRED_SOURCES = {
     "fixtures/api_rate_limit_policy_v1.md",
     "fixtures/data_retention_policy_v1.md",
@@ -85,7 +85,7 @@ def challenge_retrieval_metrics(items, hits_by_item, k_values=(5, 7)) -> dict:
     """检索挑战集（40 题）计分：Recall@k、MRR、source_precision@5、nDCG@5、
     hit_rate、hard-negative 泄漏、各题型明细。
 
-    口径（Day 1 冻结 acceptance.yaml retrieval_scoring）：
+    口径（acceptance.yaml 冻结的 retrieval_scoring）：
     - grade 2 完全相关、grade 1 部分相关（版本冲突旧版）：命中计分
     - hard_negatives 命中计入泄漏信号，不进 Recall/MRR 分母
     - source 去重后计名次

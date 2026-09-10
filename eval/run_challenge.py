@@ -4,7 +4,7 @@
 运行: cd eval && env -u ALL_PROXY -u all_proxy ../.venv/bin/python run_challenge.py
 
 产出: eval/reports/challenge-<date>.jsonl（per-item 有序命中 trace + 契约校验）
-      eval/reports/challenge-<date>.md（汇总 + 回归锚点对照 Day 1 基线）
+      eval/reports/challenge-<date>.md（汇总 + 回归锚点对照冻结基线）
 """
 import argparse
 import hashlib
@@ -35,7 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 CHALLENGE_SET = Path(__file__).resolve().parent / "challenge_set.jsonl"
 ACCEPTANCE = Path(__file__).resolve().parent / "acceptance.yaml"
 
-# Day 1 冻结基线（acceptance.yaml baseline_freezing）
+# 冻结基线（acceptance.yaml baseline_freezing）
 BASELINE_RETRIEVAL = {"recall@5": 1.0, "recall@7": 1.0, "mrr": 0.975}
 
 
@@ -158,7 +158,7 @@ def render_report(results, items, metrics, bindings) -> str:
         "",
         "## 回归锚点（20 条 golden 计分题）",
         "",
-        "| 指标 | Day 1 基线 | 本次 |",
+        "| 指标 | 冻结基线 | 本次 |",
         "|---|---|---|",
         f"| Recall@5 | {BASELINE_RETRIEVAL['recall@5']:.3f} | {metrics['regression_anchor']['recall@5']:.3f} |",
         f"| anchor 题数 | 20 | {metrics['regression_anchor']['count']} |",

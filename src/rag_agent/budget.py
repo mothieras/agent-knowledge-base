@@ -1,4 +1,4 @@
-"""请求级共享预算（DESIGN 3.2，Day 1 冻结）。
+"""请求级共享预算（DESIGN 3.2，2026-09-07 冻结）。
 
 一个预算对象经 ``config["configurable"]["budget"]`` 贯穿主图与全部子图
 （LangGraph 会把 configurable 传播到 Send 扇出的每个子图），因此工具调用

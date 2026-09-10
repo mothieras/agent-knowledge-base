@@ -1,5 +1,5 @@
-# eval/acceptance.yaml — 五天检索优先演示版评测冻结契约
-# Day 1 冻结：题集/hash、qrels、decision 标签、检索参数、数值门禁。
+# eval/acceptance.yaml — 检索优先演示版评测冻结契约
+# 冻结（2026-09-07）：题集/hash、qrels、decision 标签、检索参数、数值门禁。
 # 本文件在任何行为实现前冻结；新行为必须对照本契约消融/晋升。
 # 修订需在 ROADMAP 第 4.3 节记录原因。
 
@@ -31,7 +31,7 @@ corpus_binding:
   third_party_revision: mothieras/all-in-rag@04b8ea2
   fixtures: 4 files（2 对 active/expired）
 
-# ── Day 1 基线绑定（行为实现前）───────────────────────────────
+# ── 冻结基线绑定（行为实现前）───────────────────────────────
 baseline_freezing:
   git_commit: 2771a33147e4ee6edd427cc6443c7de8dfa4cb91
   run_date: "2026-09-07"
@@ -48,7 +48,7 @@ retrieval:
   top_k_scoring: [5, 7]        # Recall@5 / Recall@7
   query_max_chars: 2000
   request_timeout_s: 30
-  score_threshold: 0.4         # 2026-09-10 勘误：实现与 Day 1 基线报告绑定值均为 0.4，原记录 0.2 为冻结当日笔误
+  score_threshold: 0.4         # 2026-09-10 勘误：实现与冻结时基线报告绑定值均为 0.4，原记录 0.2 为冻结当日笔误
 
 # ── 生成/问答预算（实现前冻结）───────────────────────────────
 generation:
@@ -100,7 +100,7 @@ quality_gate:
   errors: 0
   skips: 0
 
-# ── 容量目标（待 Day 4 验证）─────────────────────────────────
+# ── 容量目标（待规模实测验证）─────────────────────────────────
 capacity:
   docs: 100
   chunks: 10000

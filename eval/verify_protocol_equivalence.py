@@ -1,4 +1,4 @@
-"""Day 2 协议等价性验证：同一查询经 HTTP /search 与 MCP search_knowledge
+"""协议等价性验证：同一查询经 HTTP /search 与 MCP search_knowledge
 返回的裁剪后公共结果必须逐字段一致（DESIGN 5：HTTP/MCP 共用同一预算与结果）。
 
 用法（服务运行中）: cd eval && ../.venv/bin/python verify_protocol_equivalence.py

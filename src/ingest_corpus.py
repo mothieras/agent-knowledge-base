@@ -1,4 +1,4 @@
-"""T3 入库脚本：clear_all 重建 Qdrant，按 manifest.json + data/fixtures/manifest.json 入库全部语料。
+"""入库脚本：clear_all 重建 Qdrant，按 manifest.json + data/fixtures/manifest.json 入库全部语料。
 
 前提: 根目录 .env 已配置 DEEPSEEK_API_KEY（无需 API 调用，仅保持同源加载）；已先运行 data/sync_sources.py。
 运行: cd src && uv run --python ../.venv/bin/python ingest_corpus.py
@@ -58,7 +58,7 @@ def _load_documents():
         }
 
     # 受治理 fixture（项目自有，版本冲突素材）：与第三方语料进同一 collection，
-    # 版本冲突评测必须在混合语料上检索（ROADMAP M1/M2）
+    # 版本冲突评测必须在混合语料上检索
     for doc in fixtures["documents"]:
         p = str(FIXTURES_MANIFEST.parent / doc["file"])
         paths.append(p)
