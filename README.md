@@ -381,12 +381,11 @@ docs/              归档：原 PRD/DESIGN/ROADMAP、检查点与旧路线
 | 容器内自入库（空卷冷启动：经代理下载嵌入模型 → 入库 46/354 → 快照 → health ready → MCP smoke PASS） | 通过 |
 | fresh clone 空数据复现（宿主机：clone→依赖→入库 46/354 与质量索引一致→启动→HTTP+MCP smoke） | 通过（检索侧；生成模型未配置路径） |
 | ask_knowledge 冒烟（MCP 问答委托） | 通过：decision=answered、citations=3、usage 1175/948 tok，经 MCP 结构化输出返回 |
-| Pi 实测端到端（工具发现、Bearer、search/get_context、答案消费） | 未执行：需在外部 MCP 客户端操作；服务端 Bearer 与协议冒烟已通过 |
+| Pi 实测端到端（工具发现、Bearer、search/get_context、答案消费） | 通过（修复后复测）：pi 0.85.1 + pi-mcp-adapter 2.32.1 ↔ 服务端 mcp SDK 2.1.1，五步全绿——工具发现、Bearer 全程鉴权、search 命中、get_context 回查、**Pi 用自己的模型基于证据作答并引用 source**、ask_knowledge decision=answered。首轮实测发现 pi-mcp-adapter 只把 TextContent 渲染进模型上下文，摘要式文本导致接地断裂；已修：MCP 工具文本通道与 structuredContent 同载荷（双通道等价，见 `src/api/mcp_app.py`），97 项测试通过后 Pi 复测全绿 |
 
 ### 尚未作为已完成能力声明
 
 - 中文分词 BM25、自定义 RRF、reranker、按版本/有效期过滤（已有元数据不等于已执行过滤；ch029 是版本过滤的现成靶子）
-- Pi 端到端实测与 ask_knowledge 冒烟（见上表）
 - 每 Agent 身份、公私分区、协作编辑、异步入库和文档历史生命周期（已顺延）
 - 限流、TLS、生产级部署；新产品以单次请求为语义，不再提供跨请求会话
 

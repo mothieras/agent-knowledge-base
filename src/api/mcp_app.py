@@ -1,16 +1,18 @@
 """L3 MCP 适配：官方 Python MCP SDK 2.x Streamable HTTP ASGI app。
 
-工具经 lifespan context 拿 L2 AppService；文本部分只给短摘要/状态/证据 ID，
-完整结果走 structuredContent（不再复制正文）。鉴权覆盖整个 ASGI mount（含
-transport 各 HTTP 方法），不依赖 FastAPI 路由依赖。
+工具经 lifespan context 拿 L2 AppService；文本与结构化双通道同载荷
+（Pi 实测发现 pi-mcp-adapter 等客户端只把 TextContent 渲染进模型上下文，
+摘要式文本会让接地场景拿不到证据正文，故文本通道也承载完整 JSON）。
+鉴权覆盖整个 ASGI mount（含 transport 各 HTTP 方法），不依赖 FastAPI 路由依赖。
 
 2.x 要点（Day 1 验证）：MCPServer 替代 FastMCP；lifespan 必须
 ``async with mcp.session_manager.run()``；``streamable_http_path='/'`` 挂载到
-``/mcp`` 得到单层端点；工具返回 ``CallToolResult(content=[TextContent(摘要)],
-structured_content=dto)`` 控制文本部分。
+``/mcp`` 得到单层端点；工具返回 ``CallToolResult(content=[TextContent(完整JSON)],
+structured_content=dto)``。
 """
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -27,6 +29,17 @@ from core.retrieval_service import ServiceError
 from schema.dto import AnswerRequest, AnswerResponse, EvidenceWindow, SearchRequest, SearchResponse
 
 EXPECTED_TOKEN = os.environ.get("DEMO_API_TOKEN", "")
+
+
+def _text_payload(payload: dict) -> TextContent:
+    """文本通道承载完整 JSON（与 structuredContent 同源同构）。
+
+    2026-09-10 Pi 实测：pi-mcp-adapter 只把 TextContent 渲染进模型上下文，
+    structuredContent 不达模型——摘要式文本会让接地场景拿不到证据正文。
+    双通道同载荷（SearchResponse 受 24KiB DTO 预算约束），保证任何客户端
+    至少有一条可用通道。
+    """
+    return TextContent(type="text", text=json.dumps(payload, ensure_ascii=False))
 
 
 class BearerMiddleware(BaseHTTPMiddleware):
@@ -79,13 +92,7 @@ def create_mcp_server(include_ask: bool = True) -> MCPServer:
         except ServiceError as exc:
             raise ToolError(exc.message) from exc
         return CallToolResult(
-            content=[TextContent(
-                type="text",
-                text=f"命中 {resp.returned_k}/{resp.requested_k}"
-                     + ("（已按预算裁剪）" if resp.truncated else "")
-                     + f"，index_id={resp.index_id[:16]}…，"
-                     + "证据 ID: " + ", ".join(h.evidence_id for h in resp.hits),
-            )],
+            content=[_text_payload(resp.model_dump())],
             structured_content=resp.model_dump(),
         )
 
@@ -106,11 +113,7 @@ def create_mcp_server(include_ask: bool = True) -> MCPServer:
         except ServiceError as exc:
             raise ToolError(exc.message) from exc
         return CallToolResult(
-            content=[TextContent(
-                type="text",
-                text=f"{window.source} 窗口 {window.offset}+{len(window.content)}/"
-                     f"{window.total_length} 字符，index_id={window.index_id[:16]}…",
-            )],
+            content=[_text_payload(window.model_dump())],
             structured_content=window.model_dump(),
         )
 
@@ -137,12 +140,7 @@ def create_mcp_server(include_ask: bool = True) -> MCPServer:
             except ServiceError as exc:
                 raise ToolError(exc.message) from exc
             return CallToolResult(
-                content=[TextContent(
-                    type="text",
-                    text=f"decision={resp.decision}"
-                         + (f"，命中 {len(resp.citations)} 条引用" if resp.citations else "")
-                         + f"，mode={resp.mode}",
-                )],
+                content=[_text_payload(resp.model_dump())],
                 structured_content=resp.model_dump(),
             )
 

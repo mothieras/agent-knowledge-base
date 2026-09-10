@@ -1,8 +1,9 @@
-"""MCP 工具测试：注册、in-process 调用、structuredContent 与文本摘要分离。
+"""MCP 工具测试：注册、in-process 调用、文本/结构化双通道同载荷。
 
 不依赖真实网络握手；用 MCPServer.call_tool + 构造的 Context 直接调工具。
 """
 import asyncio
+import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -74,10 +75,10 @@ def test_search_knowledge_returns_structured_content(mcp_server, mcp_ctx):
     assert sc["index_id"].startswith("sha256:")
     assert sc["returned_k"] == 1
     assert sc["hits"][0]["evidence_id"]
-    # 文本部分只给摘要，不重复完整正文
-    text = result.content[0].text
-    assert "命中" in text
-    assert sc["hits"][0]["content"] not in text
+    # 文本通道与结构化通道同载荷（Pi 实测：只读文本通道的客户端也要能拿到正文）
+    text_payload = json.loads(result.content[0].text)
+    assert text_payload == sc
+    assert sc["hits"][0]["content"] in result.content[0].text
 
 
 def test_get_context_window(mcp_server, mcp_ctx):
@@ -124,8 +125,8 @@ def test_ask_knowledge_returns_decision_protocol(mcp_server_with_ask, mcp_ctx_ge
     assert sc["decision"] == "answered"
     assert sc["mode"] == "agentic"
     assert sc["usage"]["model_calls"] == 1
-    # 文本部分只给摘要
-    assert "decision=answered" in result.content[0].text
+    # 文本通道承载完整 JSON（双通道同载荷）
+    assert json.loads(result.content[0].text)["decision"] == "answered"
 
 
 def test_ask_knowledge_not_available_without_generation(mcp_server_with_ask, mcp_ctx):

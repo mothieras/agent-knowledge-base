@@ -25,5 +25,5 @@ rag_evaluation_*.csv
 rag_evaluation_*.png
 
 .fastembed_cache/
-
-.fastembed_cache/
+.mcp.json
+.pi/
