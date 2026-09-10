@@ -4,8 +4,9 @@ import os
 _BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
 MARKDOWN_DIR = os.path.join(_BASE_DIR, "markdown_docs")
-PARENT_STORE_PATH = os.path.join(_BASE_DIR, "parent_store")
-QDRANT_DB_PATH = os.path.join(_BASE_DIR, "qdrant_db")
+# 数据目录支持环境变量覆盖（规模实测/容器挂载用独立快照，不污染质量索引）
+PARENT_STORE_PATH = os.environ.get("PARENT_STORE_PATH", os.path.join(_BASE_DIR, "parent_store"))
+QDRANT_DB_PATH = os.environ.get("QDRANT_DB_PATH", os.path.join(_BASE_DIR, "qdrant_db"))
 
 # --- Qdrant Configuration ---
 CHILD_COLLECTION = "document_child_chunks"

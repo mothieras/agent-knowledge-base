@@ -1,0 +1,67 @@
+{
+  "bindings": {
+    "mode": "rag",
+    "date": "2026-09-10",
+    "git_commit": "ca3cee45bb03104ca597cfafc1f3fa2659e529d6",
+    "manifest_hash": "5c702f3c358fd1b5",
+    "golden_lines": 30,
+    "index_points": 354,
+    "index_id": "sha256:0df9fbfaeecaaf2bef1f3a78b2db71aad767935a98aafaf398792fcdc2a34325",
+    "dense_model": "Qwen/Qwen3-Embedding-0.6B",
+    "sparse_model": "Qdrant/bm25",
+    "llm_model": "deepseek-chat",
+    "llm_base_url": "https://api.deepseek.com",
+    "judge_model": "deepseek-chat",
+    "retrieval_k": 7,
+    "score_threshold": 0.4,
+    "elapsed_s": 192.86037421226501
+  },
+  "retrieval": {
+    "scored_items": 20,
+    "recall@5": 1.0,
+    "recall@7": 1.0,
+    "mrr": 1.0,
+    "hit_rate": 1.0,
+    "section_hit_rate": null,
+    "expired_hit_items": 0,
+    "fixture_hit_items": 0
+  },
+  "generation": {
+    "faithfulness": 0.9679358004749488,
+    "answer_relevancy": 0.8512265783735948,
+    "context_precision": 0.8148148147425925,
+    "context_recall": 0.7222222222222222,
+    "implemented_by": "ragas"
+  },
+  "decisions": {
+    "refusal_tp": 5,
+    "refusal_fp": 4,
+    "refusal_fn": 0,
+    "refusal_precision": 0.556,
+    "refusal_recall": 1.0,
+    "legacy_specificity": 0.84,
+    "clearly_answerable_n": 20,
+    "misrefusal_rate": 0.1,
+    "overclarify_rate": 0.0,
+    "ambiguous_refused": 2,
+    "clarification_rate": 0.0,
+    "clarification_n": 5
+  },
+  "citations": {
+    "answered": 21,
+    "valid": 21,
+    "invalid": 0,
+    "uncited": 0
+  },
+  "system": {
+    "executed": 30,
+    "errors": 0,
+    "skips": 0,
+    "latency_p50_s": 1.84,
+    "latency_p95_s": 3.74,
+    "avg_input_tokens": 982,
+    "avg_output_tokens": 402,
+    "avg_model_calls": 1,
+    "avg_cost_cny": 0.00095
+  }
+}

@@ -8,6 +8,7 @@ venv/
 qdrant_db/
 markdown_docs/
 parent_store/
+eval/scale_artifacts/
 /docs/*
 !/docs/PRD.md
 !/docs/DESIGN.md

@@ -252,25 +252,26 @@ env -u ALL_PROXY -u all_proxy ../.venv/bin/python run_challenge.py
 
 ### 已记录基线
 
-**当前基准是 2026-09-10 单次 decision 协议基线（mode=agentic 与 mode=rag 分别建立首轮基线）**：完整报告见 [`eval/reports/baseline-2026-09-10-agentic.md`](eval/reports/baseline-2026-09-10-agentic.md) 与 [`baseline-2026-09-10-rag.md`](eval/reports/baseline-2026-09-10-rag.md)，per-item 数据见同名 `.jsonl`。检索指标统计进入检索流程的 20 题，5 条歧义题由 clarification 指标单独评估。
+**当前基准是 2026-09-10 单次 decision 协议基线（最终 commit 重跑；rag/agentic 同 index/模型/参数，README 表由 make_readme_table.py 从本场 summary 生成）**：完整报告见 [`eval/reports/baseline-2026-09-10-agentic.md`](eval/reports/baseline-2026-09-10-agentic.md) 与 [`baseline-2026-09-10-rag.md`](eval/reports/baseline-2026-09-10-rag.md)，per-item 数据与汇总见同名 `.jsonl` / `.summary.json`。检索指标统计进入检索流程的 20 题，5 条歧义题由 clarification 指标单独评估。
 
 | 指标（单次 decision 协议） | 2026-09-10 agentic | 2026-09-10 rag |
 |---|---:|---:|
 | 执行 / 错误 / SKIP | 30 / 0 / 0 | 30 / 0 / 0 |
 | Recall@5 / Recall@7 | 1.000 / 1.000 | 1.000 / 1.000 |
 | MRR | 1.000 | 1.000 |
-| expired/fixture 泄漏题数 | 1 / 1 | 0 / 0 |
-| Faithfulness | 0.957 | 0.991 |
-| Answer relevancy | 0.918 | 0.879 |
-| Context precision / recall | 0.674 / 0.900 | 0.863 / 0.794 |
-| refusal precision（TP/(TP+FP)）/ recall | 1.000 / 1.000 | 0.500 / 1.000 |
-| misrefusal / overclarify rate | 0.000 / 0.040 | 0.200 / 0.000 |
-| Clarification rate（歧义题 n=5） | 0.200 | 0.000 |
-| 引用机械有效性（answered 题） | 23/23 | 20/20 |
-| Latency P50 / P95 | 10.56s / 17.85s | 1.65s / 3.74s |
-| 平均 cost（¥/query） | 0.0075 | 0.0027 |
+| expired/fixture 泄漏题数 | 0 / 0 | 0 / 0 |
+| Faithfulness | 0.961 | 0.968 |
+| Answer relevancy | 0.931 | 0.851 |
+| Context precision / recall | 0.624 / 0.917 | 0.815 / 0.722 |
+| refusal precision（TP/(TP+FP)）/ recall | 1.0 / 1.0 | 0.556 / 1.0 |
+| misrefusal / overclarify rate（明确可答 n=20） | 0.0 / 0.0 | 0.1 / 0.0 |
+| Clarification rate（歧义题 n=5） | 0.2 | 0.0 |
+| 歧义题被硬拒（计入 refusal FP，不计入 misrefusal） | 0 | 2 |
+| 引用机械有效性（answered 题） | 24/24 | 21/21 |
+| Latency P50 / P95 | 13.99s / 22.25s | 1.84s / 3.74s |
+| 平均 cost（¥/query） | 0.0082 | 0.0009 |
 
-两种模式首轮基线的已知差异（Day 4 对比审计输入，不预设结论）：rag 单图无改写/拆解，单次检索的 top-k 证据直接约束回答，歧义题不会返回澄清（clarification 0.000）且误拒率偏高（0.200，部分多跳题证据片段不足以支撑完整回答）；agentic 拆解/多轮工具后拒答精度更高（refusal precision 1.000，含 rewrite JSON 解析失败重试）。agentic 延迟与成本显著更高（P50 10.56s vs 1.65s，成本约 2.8×），检索指标两者持平（Recall@5 均 1.000）。
+两种模式的已知差异（最终 commit 同场对照，不预设结论）：rag 单图无改写/拆解，单次检索的 top-k 证据直接约束回答——明确可答题误拒 0.1（2/20，证据片段不足以支撑完整回答），歧义题不会澄清（clarification 0.000）且 2/5 被硬拒（计入 refusal FP，故其拒答 precision 0.556）；agentic 拆解/多轮工具后拒答精度 1.000（含 rewrite JSON 解析失败重试），歧义题澄清 1/5。代价：agentic 延迟与成本显著更高（P50 13.99s vs 1.84s，约 7.6×；成本约 9×），检索指标两者持平（Recall@5 均 1.000），context precision 双图更低（0.624 vs 0.815）——多路证据摊薄了上下文精度，但 context recall 更高（0.917 vs 0.722）。
 
 **历史基准（旧 HITL 协议，不回写、不直接同比）**：
 
@@ -289,7 +290,7 @@ env -u ALL_PROXY -u all_proxy ../.venv/bin/python run_challenge.py
 
 **历史指标口径提醒**：旧 runner/报告中的 `refusal.precision` 实际计算 `1 - false_refusals / answerable_n`，不是标准拒答 precision；新 decision 协议使用标准 TP/(TP+FP)，二者不能直接比较。旧 HITL 的澄清暂停率与新单次澄清率也是不同语义，并列报告不直接同比。
 
-检索挑战集（40 题直接检索）回归锚点 Recall@5=1.000 与 Day 1 基线持平（见 [`eval/reports/challenge-2026-09-09.md`](eval/reports/challenge-2026-09-09.md)），全量指标 Recall@5=0.950、MRR=0.933、2 题 hard-negative 泄漏与 Day 2 持平。Recall 1.000 只代表这套固定语料与 golden set，不是对开放问题的泛化承诺。
+检索挑战集（40 题直接检索）回归锚点 Recall@5=1.000 与 Day 1 基线持平（见 [`eval/reports/challenge-2026-09-10.md`](eval/reports/challenge-2026-09-10.md)），全量指标 Recall@5=0.950、MRR=0.933、2 题 hard-negative 泄漏与 Day 2 持平。Recall 1.000 只代表这套固定语料与 golden set，不是对开放问题的泛化承诺。
 
 ## 测试
 
