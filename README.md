@@ -10,15 +10,15 @@
 
 > **状态：活跃原型。** 适合学习、评测和本地演示；当前没有认证、限流、TLS 或持久会话，不能直接暴露到公网。
 
-## 产品方向与本次交付范围（已确认，尚未实施）
+## 产品方向与本次交付范围（已确认；检索优先演示版已交付，见发布清单）
 
 新定位是**自托管知识检索服务**：以 RAG 质量和可追溯证据为核心，同一个 FastAPI 应用提供 HTTP 与 MCP；生成模型可选，普通 RAG 单图与 Agentic RAG 双图共用模型配置。
 
-用户已选择 **A：五天检索优先演示版**，主要用于学习与求职展示：
+已交付的切片是**检索优先演示版**，主要用于学习与求职展示：
 
-- **本次目标**：受控资料离线导入；无生成模型的 HTTP/MCP 检索与证据回查；单次普通 RAG/双图 Agent 问答及效果、延迟、成本比较；Pi 实际接入；Python/Docker 与现有 Gradio 演示。
-- **明确顺延**：每 Agent 身份与私有分区、公共协作写入、异步入库 API、文档历史和在线版本生命周期。五天版所有获准访问者看到同一固定资料库，不宣传完整共享知识服务。
-- **不纳入新产品**：内置 Web/Chrome 工具、自动记忆学习、跨请求聊天历史或 HITL 恢复、管理后台、OCR。当前已有的会话能力在代码迁移前仍是现状，不代表新产品继续承诺。
+- **已交付**：受控资料离线导入；无生成模型也可用的 HTTP/MCP 检索与证据回查；单次普通 RAG/双图 Agent 问答及同配置效果、延迟、成本对照；可复现评测与规模/并发实测；Python/Docker 与现有 Gradio 演示。
+- **明确顺延**：每 Agent 身份与私有分区、公共协作写入、异步入库 API、文档历史和在线版本生命周期。演示版所有获准访问者看到同一固定资料库，不宣传完整共享知识服务。
+- **不纳入新产品**：内置 Web/Chrome 工具、自动记忆学习、跨请求聊天历史或 HITL 恢复、管理后台、OCR。
 
 文档分工：
 
@@ -227,6 +227,25 @@ cd src
 API_URL=http://127.0.0.1:8000 python app.py
 ```
 
+### 6. Docker 运行（可选）
+
+```bash
+docker build -t agentic-rag-demo .
+docker run -d --name rag-demo -p 8000:8000 \
+  -v "$PWD/qdrant_db:/app/qdrant_db" \
+  -v "$PWD/parent_store:/app/parent_store" \
+  -v "$HOME/.cache/huggingface:/app/.cache/huggingface" \
+  -v "$PWD/.fastembed_cache:/app/.cache/fastembed" \
+  -e HF_HUB_OFFLINE=1 \
+  [-e DEMO_API_TOKEN=<token>] [-e DEEPSEEK_API_KEY=sk-...] \
+  agentic-rag-demo
+```
+
+- 入口脚本发现 `/app/qdrant_db/snapshot_manifest.json` 不存在时先入库（需联网下载嵌入模型，建议直接挂载已有索引/模型缓存卷）再启动 API；已有快照则直接启动。
+- 镜像约 7 GB（含 torch/CUDA 运行库；slim 化留作后续优化）。
+- `DEMO_API_TOKEN` 设置后 HTTP 与 MCP 端点统一要求 `Authorization: Bearer <token>`（无/错凭据返回 401）；不设置则本地开发免鉴权。
+- MCP 客户端接入：Streamable HTTP 端点 `http://127.0.0.1:8000/mcp`，工具 `search_knowledge` / `get_context`（`ask_knowledge` 仅在配置生成模型后发布）。冒烟脚本：`src/smoke_mcp.py --url http://127.0.0.1:8000/mcp [--token <token>]`。
+
 ## 评测
 
 评测集位于 [`eval/golden_set.jsonl`](eval/golden_set.jsonl)，覆盖：
@@ -338,18 +357,43 @@ docs/              归档：原 PRD/DESIGN/ROADMAP、检查点与旧路线
 
 ## 当前边界与路线图
 
+### 发布清单（2026-09-10，逐项实测）
+
+**第一步·对照实验定稿**（完整证据见 [对照报告](eval/reports/comparison-2026-09-10.md)）：
+
+| 项 | 状态 |
+|---|---|
+| 评测口径审计：runner misrefusal/overclarify 分母对齐冻结契约（明确可答 n=20）、README 基线表改脚本同场生成、acceptance.yaml threshold 0.2→0.4 勘误（冻结当日笔误） | 通过 |
+| 最终 commit 重跑 rag/agentic 双基线（同 index/模型/参数，30/30、0 ERROR 0 SKIP） | 通过 |
+| 40 题挑战集复跑（回归锚点 Recall@5=1.000 与 Day 1 持平） | 通过 |
+| badcase 审计（rag 4 例误拒逐条归因、歧义题澄清合理性、挑战集 2 例泄漏） | 通过（写入对照报告） |
+| 规模与并发实测（100 文档/12,098 块合成快照，3 并发 126/126 有效，0 错误 0 busy） | 通过 |
+
+**第二步·发布**：
+
+| 项 | 状态 |
+|---|---|
+| Docker 镜像构建（约 7 GB，含 torch/CUDA 运行库；slim 化未执行） | 通过 |
+| 容器启动 → health ready（挂载既有索引） | 通过 |
+| HTTP smoke（/search） | 通过 |
+| MCP smoke：工具发现、search/get_context 回查、content_hash 客户端复算（src/smoke_mcp.py） | 通过 |
+| Bearer 鉴权（HTTP 与 MCP：无/错凭据 401、正确凭据 200） | 通过 |
+| 容器内自入库（空卷冷启动，经代理下载模型后入库） | （见下） |
+| fresh clone 空数据复现（宿主机：clone→依赖→入库 46/354 与质量索引一致→启动→HTTP+MCP smoke） | 通过（检索侧；生成模型未配置路径） |
+| ask_knowledge 冒烟（MCP 问答委托） | 未执行：DeepSeek 账户余额耗尽（402），充值后补跑；问答路径已由 51 条基线 answered+引用机械校验覆盖 |
+| Pi 实测端到端（工具发现、Bearer、search/get_context、答案消费） | 未执行：需在外部 MCP 客户端操作；服务端 Bearer 与协议冒烟已通过 |
+
 ### 尚未作为已完成能力声明
 
-- 中文分词 BM25、自定义 RRF、reranker、按版本/有效期过滤（已有元数据不等于已执行过滤）
-- Docker 交付及计划中的 Pi 端到端兼容性验收（MCP Streamable HTTP 已按 SDK 2.x 实现，Pi 实测在 Day 5）
+- 中文分词 BM25、自定义 RRF、reranker、按版本/有效期过滤（已有元数据不等于已执行过滤；ch029 是版本过滤的现成靶子）
+- Pi 端到端实测与 ask_knowledge 冒烟（见上表）
 - 每 Agent 身份、公私分区、协作编辑、异步入库和文档历史生命周期（已顺延）
 - 限流、TLS、生产级部署；新产品以单次请求为语义，不再提供跨请求会话
 
 ### 下一步
 
-1. 第一步，对照实验定稿：最终 commit 重跑双基线并修正基线表、badcase 审计、规模与并发实测，产出对照报告。
-2. 第二步，发布：Docker 原生流程、Pi 实测端到端、空数据复现、README 收尾与发布清单。
-3. 发布后第一优先是版本/有效期过滤；知识库本体与检索消融另行排期。收尾细节与评测纪律见 [作战计划](PLAN.md)，旧 M0–M6 计划保留在[历史归档](docs/archive/roadmap-before-retrieval-demo.md)。
+1. 发布后第一优先是版本/有效期过滤（L0 执行过滤 + ch029 泄漏回归；注意 version_conflict 题按设计需返回两版，过滤不得误伤）。
+2. 知识库本体（身份/分区/协作写入/文档历史，归档 PRD F-01~F-09）与检索实证升级（挑战集→消融→晋升）另行排期。收尾细节与评测纪律见 [作战计划](PLAN.md)，旧 M0–M6 计划保留在[历史归档](docs/archive/roadmap-before-retrieval-demo.md)。
 
 ## License
 

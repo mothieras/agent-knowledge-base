@@ -1,0 +1,55 @@
+{
+  "date": "2026-09-10",
+  "git_commit": "8d87e1eacd20d0ae57dbaf4cde270a28ab642eae",
+  "machine": "Darwin 25.6.0 / 10 cores",
+  "corpus": {
+    "docs": 100,
+    "parent_chunks": 1200,
+    "child_chunks": 12098,
+    "corpus_chars": 4154140,
+    "seed": 20260910,
+    "ingest_seconds": 3948.3,
+    "dense_model": "Qwen/Qwen3-Embedding-0.6B",
+    "sparse_model": "Qdrant/bm25",
+    "index_id": "sha256:c896b758576636aa045878497d28d747b825926354d47f7f4cb968803159bce0"
+  },
+  "server": {
+    "index_id": "sha256:c896b758576636aa045878497d28d747b825926354d47f7f4cb968803159bce0",
+    "rss_after_ready_kb": 1613024,
+    "rss_after_conc_kb": 1932720,
+    "peak_rss_kb": 1932672,
+    "concurrency_slots": 3
+  },
+  "sequential_baseline": {
+    "n": 36,
+    "n_valid": 36,
+    "valid_rate": 1.0,
+    "latency_p50_s": 0.128,
+    "latency_p95_s": 0.142,
+    "latency_mean_s": 0.111,
+    "errors": 0,
+    "busy_count": 0,
+    "wall_s": 4.0
+  },
+  "concurrent": {
+    "n": 126,
+    "n_valid": 126,
+    "valid_rate": 1.0,
+    "latency_p50_s": 0.382,
+    "latency_p95_s": 0.411,
+    "latency_mean_s": 0.311,
+    "errors": 0,
+    "busy_count": 0,
+    "workers": 3,
+    "wall_s": 13.1,
+    "endpoint_split": {
+      "search": 105,
+      "evidence": 21
+    }
+  },
+  "queueing": {
+    "p50_ratio": 2.98,
+    "p95_ratio": 2.89,
+    "busy_count": 0
+  }
+}

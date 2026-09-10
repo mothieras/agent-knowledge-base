@@ -166,9 +166,13 @@ async def main() -> int:
         "QDRANT_DB_PATH": str(ARTIFACTS / "qdrant_db"),
         "PARENT_STORE_PATH": str(ARTIFACTS / "parent_store"),
         "API_HOST": HOST, "API_PORT": str(PORT),
+        # 模型已缓存；离线模式跳过 HF 在线校验（无代理环境下 HEAD 重试会挂住启动）
+        "HF_HUB_OFFLINE": "1",
     })
     env.pop("DEMO_API_TOKEN", None)  # 压测聚焦容量，鉴权由 Pi 端到端覆盖
     env.pop("HF_ENDPOINT", None)
+    for k in ("ALL_PROXY", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+        env.pop(k, None)
 
     print(f"[server] 启动 uvicorn @ {BASE_URL}（合成快照 index={meta['index_id'][:16]}…）")
     log_file = open(server_log_path, "w", encoding="utf-8")
@@ -278,61 +282,11 @@ async def main() -> int:
     capacity_targets = {"docs ~100": meta["n_docs"], "chunks ~10000": meta["child_count"],
                        "concurrency 3": CONCURRENCY,
                        "valid queries >= 100": conc_stats["n_valid"]}
+    doc["server"]["rss_samples"] = len(sampler.samples)
     json_path = REPORTS / f"scale-{today}.json"
     json_path.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    md = [
-        f"# 规模与并发实测 {today}（合成快照，3 并发只读）",
-        "",
-        "## 可复现绑定",
-        "",
-        "| 项 | 值 |",
-        "|---|---|",
-        f"| git commit | `{doc['git_commit']}` |",
-        f"| 合成语料 | {meta['n_docs']} 文档 / {meta['corpus_chars'] / 1e6:.2f} MB（seed={meta['seed']}，生成器 scale/build_scale_snapshot.py）|",
-        f"| 索引 | parent {meta['parent_count']} / child {meta['child_count']} chunks，index_id `{meta['index_id'][:24]}…` |",
-        f"| 模型 | dense {meta['dense_model']} + sparse {meta['sparse_model']}（入库耗时 {meta['ingest_seconds']}s）|",
-        f"| 服务 | 单进程 uvicorn（FastAPI），并发槽位 3（AppService.MAX_CONCURRENT_QUERIES）|",
-        f"| 机器 | {machine}（本机实测，非受控环境，数字如实记录）|",
-        "",
-        "## 容量目标对照（acceptance.yaml capacity）",
-        "",
-        "| 目标 | 实测 |",
-        "|---|---|",
-        f"| 文档约 100 | {meta['n_docs']} |",
-        f"| child chunks 约 1 万 | {meta['child_count']} |",
-        f"| 并发 3 | {CONCURRENCY} worker |",
-        f"| 有效只读查询 ≥100 | {conc_stats['n_valid']}/{conc_stats['n']}（{endpoint_split['search']} search + {endpoint_split['evidence']} evidence）|",
-        "",
-        "## 延迟（客户端观测，含网络往返）",
-        "",
-        "| 阶段 | n | P50 (s) | P95 (s) | mean (s) | wall (s) | 错误 | busy |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
-        f"| 串行基线 | {seq_stats['n']} | {seq_stats['latency_p50_s']} | {seq_stats['latency_p95_s']} "
-        f"| {seq_stats['latency_mean_s']} | {doc['sequential_baseline']['wall_s']} | {seq_stats['errors']} | {seq_stats['busy_count']} |",
-        f"| 3 并发 | {conc_stats['n']} | {conc_stats['latency_p50_s']} | {conc_stats['latency_p95_s']} "
-        f"| {conc_stats['latency_mean_s']} | {doc['concurrent']['wall_s']} | {conc_stats['errors']} | {conc_stats['busy_count']} |",
-        "",
-        "## 排队与资源",
-        "",
-        f"- 并发/串行 P50 延迟比 {doc['queueing']['p50_ratio']}，P95 比 {doc['queueing']['p95_ratio']}；"
-        f"busy（槽位等待超 30s）{conc_stats['busy_count']} 次",
-        f"- 服务进程 RSS：ready 后 {rss_after_ready_kb / 1024:.0f} MB → 并发后 {conc_rss_kb / 1024:.0f} MB，"
-        f"并发阶段峰值 {peak_rss_kb / 1024:.0f} MB（ps 采样 1s 间隔，{len(sampler.samples)} 样本）",
-        f"- 契约有效性：并发阶段 {conc_stats['n_valid']}/{conc_stats['n']} 通过"
-        f"（HTTP 200 + content_hash 自洽 + span 有界，逐条客户端复算）",
-        "",
-        "## 口径与局限",
-        "",
-        "- 延迟为客户端测量（含本机回环网络与 JSON 序列化），非纯服务端处理时间",
-        "- 合成语料为模板句，仅测规模/并发行为，不代表质量语料的检索效果",
-        "- 单进程 uvicorn、本机磁盘 Qdrant embedded 模式；未测多 worker 与远程部署",
-        "- 查询集构成：命中型（语料真实句子采样）与未命中型（站外干扰句）混合",
-        f"- invalid 逐条备注见 {json_path.name}",
-        "",
-    ]
     md_path = REPORTS / f"scale-{today}.md"
-    md_path.write_text("\n".join(md), encoding="utf-8")
+    md_path.write_text(render_md(doc), encoding="utf-8")
     print(f"\n[report] {md_path}")
     print(f"[json] {json_path}")
     print(json.dumps({"capacity": capacity_targets, "sequential_baseline": seq_stats,
@@ -341,5 +295,76 @@ async def main() -> int:
     return 0
 
 
+def render_md(doc: dict) -> str:
+    """规模实测报告 markdown；doc 即 <reports>/scale-<date>.json 的内容（可重放渲染）。"""
+    c, s = doc["corpus"], doc["server"]
+    seq, conc = doc["sequential_baseline"], doc["concurrent"]
+    q = doc["queueing"]
+    split = conc["endpoint_split"]
+    lines = [
+        f"# 规模与并发实测 {doc['date']}（合成快照，3 并发只读）",
+        "",
+        "## 可复现绑定",
+        "",
+        "| 项 | 值 |",
+        "|---|---|",
+        f"| git commit | `{doc['git_commit']}` |",
+        f"| 合成语料 | {c['docs']} 文档 / {c['corpus_chars'] / 1e6:.2f} MB（seed={c['seed']}，生成器 scale/build_scale_snapshot.py）|",
+        f"| 索引 | parent {c['parent_chunks']} / child {c['child_chunks']} chunks，index_id `{c['index_id'][:24]}…` |",
+        f"| 模型 | dense {c['dense_model']} + sparse {c['sparse_model']}（入库耗时 {c['ingest_seconds']}s）|",
+        f"| 服务 | 单进程 uvicorn（FastAPI），并发槽位 {s['concurrency_slots']}（AppService.MAX_CONCURRENT_QUERIES）|",
+        f"| 机器 | {doc['machine']}（本机实测，非受控环境，数字如实记录）|",
+        "",
+        "## 容量目标对照（acceptance.yaml capacity）",
+        "",
+        "| 目标 | 实测 |",
+        "|---|---|",
+        f"| 文档约 100 | {c['docs']} |",
+        f"| child chunks 约 1 万 | {c['child_chunks']} |",
+        f"| 并发 3 | {conc['workers']} worker |",
+        f"| 有效只读查询 ≥100 | {conc['n_valid']}/{conc['n']}（{split['search']} search + {split['evidence']} evidence）|",
+        "",
+        "## 延迟（客户端观测，含网络往返）",
+        "",
+        "| 阶段 | n | P50 (s) | P95 (s) | mean (s) | wall (s) | 错误 | busy |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        f"| 串行基线 | {seq['n']} | {seq['latency_p50_s']} | {seq['latency_p95_s']} "
+        f"| {seq['latency_mean_s']} | {seq['wall_s']} | {seq['errors']} | {seq['busy_count']} |",
+        f"| 3 并发 | {conc['n']} | {conc['latency_p50_s']} | {conc['latency_p95_s']} "
+        f"| {conc['latency_mean_s']} | {conc['wall_s']} | {conc['errors']} | {conc['busy_count']} |",
+        "",
+        "## 排队与资源",
+        "",
+        f"- 并发/串行 P50 延迟比 {q['p50_ratio']}，P95 比 {q['p95_ratio']}；"
+        f"busy（槽位等待超 30s）{q['busy_count']} 次",
+        f"- 服务进程 RSS：ready 后 {s['rss_after_ready_kb'] / 1024:.0f} MB → 并发后 {s['rss_after_conc_kb'] / 1024:.0f} MB，"
+        f"并发阶段峰值 {s['peak_rss_kb'] / 1024:.0f} MB（ps 采样 1s 间隔，{s.get('rss_samples', 'n/a')} 样本）",
+        f"- 契约有效性：并发阶段 {conc['n_valid']}/{conc['n']} 通过"
+        f"（HTTP 200 + content_hash 自洽 + span 有界，逐条客户端复算）",
+        "",
+        "## 口径与局限",
+        "",
+        "- 延迟为客户端测量（含本机回环网络与 JSON 序列化），非纯服务端处理时间",
+        "- 合成语料为模板句，仅测规模/并发行为，不代表质量语料的检索效果",
+        "- 单进程 uvicorn、本机磁盘 Qdrant embedded 模式；未测多 worker 与远程部署",
+        "- 查询集构成：命中型（语料真实句子采样）与未命中型（站外干扰句）混合",
+        f"- invalid 逐条备注见 scale-{doc['date']}.json",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--from-json", dest="from_json", default=None,
+                    help="不重跑压测，从既有 scale-<date>.json 重放渲染同名 .md")
+    args = ap.parse_args()
+    if args.from_json:
+        doc = json.loads(Path(args.from_json).read_text(encoding="utf-8"))
+        out = Path(args.from_json).with_suffix(".md")
+        out.write_text(render_md(doc), encoding="utf-8")
+        print(f"[report] {out}")
+        sys.exit(0)
     sys.exit(asyncio.run(main()))
