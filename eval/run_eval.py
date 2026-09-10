@@ -4,7 +4,8 @@
 记录 decision/answer/citations/证据/usage/延迟；引用机械有效性单独校验。
 
 运行: cd eval && env -u ALL_PROXY -u all_proxy ../.venv/bin/python run_eval.py [--mode rag|agentic] [--limit N]
-产出: eval/reports/baseline-<date>-<mode>.md / .jsonl（历史报告不回写）。
+产出: eval/reports/baseline-<date>-<mode>.md / .jsonl / .summary.json（历史报告不回写；
+README 基线表由 make_readme_table.py 从两份同日 summary.json 生成，杜绝手抄漂移）。
 """
 import argparse
 import hashlib
@@ -138,7 +139,7 @@ def run_one(svc, item: dict, mode: str) -> dict:
         "input_tokens": resp.usage.input_tokens if resp.usage else None,
         "output_tokens": resp.usage.output_tokens if resp.usage else None,
         "cost_cny": resp.usage.estimated_cost_cny if resp.usage else None,
-        "tool_calls": 0,  # 单次协议：AnswerResponse 无工具计数，agentic 轨迹留 Day 4 debug 扩展
+        "model_calls": resp.usage.model_calls if resp.usage else None,
         "error": error,
     }
 
@@ -146,9 +147,13 @@ def run_one(svc, item: dict, mode: str) -> dict:
 def decision_metrics(items: list, results: list) -> dict:
     """冻结 decision 口径（acceptance.yaml）：以应拒答（unanswerable）为正类。
 
-    TP=应拒且实际 refused；FP=非应拒却 refused；FN=应拒但其他 decision。
-    precision=TP/(TP+FP)，recall=TP/(TP+FN)。legacy_specificity 为历史非误拒率
-    （1 - false_refusals / answerable_n），与新 precision 并列，不直接比较。
+    TP=应拒且实际 refused；FP=非应拒却 refused（含歧义题被硬拒）；FN=应拒但其他 decision。
+    precision=TP/(TP+FP)，recall=TP/(TP+FN)。
+    misrefusal/overclarify 分母=明确可答题（非 unanswerable 且非 ambiguous_followup），
+    对齐 acceptance.yaml「明确可答题中」口径；歧义题的澄清/被拒由 clarification 指标
+    单独评估，其中被拒计入 refusal FP 并记 ambiguous_refused，不计入 misrefusal。
+    legacy_specificity 为历史非误拒率（1 - false_refusals / answerable_n，
+    answerable_n 含歧义题），与新 precision 并列，不直接比较。
     """
     by_id = {r["id"]: r for r in results if "decision" in r}
     def decision_of(item):
@@ -157,7 +162,9 @@ def decision_metrics(items: list, results: list) -> dict:
 
     tp = fp = fn = 0
     misrefusal = overclarify = 0
-    answerable_n = 0
+    answerable_n = 0   # 历史口径分母：非 unanswerable（含歧义题）
+    clearly_n = 0      # 冻结口径分母：明确可答（非 unanswerable 且非 ambiguous_followup）
+    ambiguous_refused = 0
     clar_n = clar_yes = 0
     for item in items:
         d = decision_of(item)
@@ -167,17 +174,21 @@ def decision_metrics(items: list, results: list) -> dict:
             elif d is not None:
                 fn += 1
             continue
-        # 非 unanswerable（含澄清题）：answerable_n 保留历史口径
         answerable_n += 1
+        if item.get("category") == "ambiguous_followup":
+            clar_n += 1
+            if d == "refused":
+                fp += 1
+                ambiguous_refused += 1
+            elif d == "clarification_required":
+                clar_yes += 1
+            continue
+        clearly_n += 1
         if d == "refused":
             fp += 1
             misrefusal += 1
         elif d == "clarification_required":
             overclarify += 1
-        if item.get("category") == "ambiguous_followup":
-            clar_n += 1
-            if d == "clarification_required":
-                clar_yes += 1
 
     precision = tp / (tp + fp) if (tp + fp) else None
     recall = tp / (tp + fn) if (tp + fn) else None
@@ -187,20 +198,37 @@ def decision_metrics(items: list, results: list) -> dict:
         "refusal_precision": round(precision, 3) if precision is not None else None,
         "refusal_recall": round(recall, 3) if recall is not None else None,
         "legacy_specificity": round(legacy_specificity, 3) if legacy_specificity is not None else None,
-        "misrefusal_rate": round(misrefusal / answerable_n, 3) if answerable_n else None,
-        "overclarify_rate": round(overclarify / answerable_n, 3) if answerable_n else None,
+        "clearly_answerable_n": clearly_n,
+        "misrefusal_rate": round(misrefusal / clearly_n, 3) if clearly_n else None,
+        "overclarify_rate": round(overclarify / clearly_n, 3) if clearly_n else None,
+        "ambiguous_refused": ambiguous_refused,
         "clarification_rate": round(clar_yes / clar_n, 3) if clar_n else None,
         "clarification_n": clar_n,
     }
 
 
+def pct(xs, p):  # 无 numpy，简单分位数
+    s = sorted(xs)
+    return s[min(len(s) - 1, max(0, round(len(s) * p) - 1))] if s else 0.0
+
+
+def citation_stats(results: list) -> dict:
+    """引用机械有效性统计（answered 题）：valid=全部可回查，uncited=无引用。"""
+    cited = [r for r in results if "skip" not in r and not r.get("error")
+             and r.get("decision") == "answered"]
+    return {
+        "answered": len(cited),
+        "valid": sum(1 for r in cited if r["citation_valid"] is True),
+        "invalid": sum(1 for r in cited if r["citation_valid"] is False),
+        "uncited": sum(1 for r in cited if r["citation_count"] == 0),
+    }
+
+
 def render_report(results: list, golden_items: list, gen_scores: dict, retrieval: dict,
-                  decisions: dict, breakdown: dict, bindings: dict = None) -> str:
+                  decisions: dict, breakdown: dict, bindings: dict = None,
+                  citations: dict = None) -> str:
     executed = [r for r in results if "skip" not in r and not r.get("error")]
     lat = [r["latency_s"] for r in executed]
-    def pct(xs, p):  # 无 numpy，简单分位数
-        s = sorted(xs)
-        return s[min(len(s) - 1, max(0, round(len(s) * p) - 1))] if s else 0.0
 
     lines = [
         f"# RAG 问答评测基线 {date.today().isoformat()}（mode={bindings['mode']}，单次 decision 协议）",
@@ -233,18 +261,16 @@ def render_report(results: list, golden_items: list, gen_scores: dict, retrieval
         f"| refusal precision（TP/(TP+FP)） | {decisions['refusal_precision']} |",
         f"| refusal recall（TP/(TP+FN)） | {decisions['refusal_recall']} |",
         f"| legacy specificity（历史非误拒率） | {decisions['legacy_specificity']} |",
-        f"| misrefusal rate（明确可答题中 refused） | {decisions['misrefusal_rate']} |",
-        f"| overclarify rate（明确可答题中 clarification） | {decisions['overclarify_rate']} |",
+        f"| misrefusal rate（明确可答题中 refused，n={decisions['clearly_answerable_n']}） | {decisions['misrefusal_rate']} |",
+        f"| overclarify rate（明确可答题中 clarification，n={decisions['clearly_answerable_n']}） | {decisions['overclarify_rate']} |",
         f"| clarification rate（歧义题，n={decisions['clarification_n']}） | {decisions['clarification_rate']} |",
+        f"| ambiguous refused（歧义题被硬拒：计入 refusal FP，不计入 misrefusal） | {decisions['ambiguous_refused']} |",
         "",
         "## 引用机械有效性（A-05）",
         "",
     ]
-    cited = [r for r in executed if r["decision"] == "answered"]
-    valid_n = sum(1 for r in cited if r["citation_valid"] is True)
-    invalid_n = sum(1 for r in cited if r["citation_valid"] is False)
-    uncited = sum(1 for r in cited if r["citation_count"] == 0)
-    lines.append(f"- answered {len(cited)} 条：引用全部可回查 {valid_n} 条 / 存在无效引用 {invalid_n} 条 / 无引用 {uncited} 条")
+    c = citations if citations is not None else citation_stats(results)
+    lines.append(f"- answered {c['answered']} 条：引用全部可回查 {c['valid']} 条 / 存在无效引用 {c['invalid']} 条 / 无引用 {c['uncited']} 条")
     lines += [
         "",
         "## 检索层",
@@ -391,6 +417,7 @@ def main():
 
     bindings = {
         "mode": args.mode,
+        "date": today,
         "git_commit": git_commit(),
         "manifest_hash": manifest_hash(),
         "golden_lines": len(items),
@@ -406,15 +433,41 @@ def main():
         "elapsed_s": time.time() - t_start,
     }
 
+    executed = [r for r in results if "skip" not in r and not r.get("error")]
+    lat = [r["latency_s"] for r in executed]
+    citations = citation_stats(results)
+    summary = {
+        "bindings": bindings,
+        "retrieval": retrieval,
+        "generation": gen_scores,
+        "decisions": decisions,
+        "citations": citations,
+        "system": {
+            "executed": len(executed),
+            "errors": sum(1 for r in results if r.get("error")),
+            "skips": sum(1 for r in results if r.get("skip")),
+            "latency_p50_s": round(pct(lat, 0.5), 2),
+            "latency_p95_s": round(pct(lat, 0.95), 2),
+            "avg_input_tokens": round(statistics.mean(r["input_tokens"] or 0 for r in executed)),
+            "avg_output_tokens": round(statistics.mean(r["output_tokens"] or 0 for r in executed)),
+            "avg_model_calls": round(statistics.mean(r["model_calls"] or 0 for r in executed), 2),
+            "avg_cost_cny": round(statistics.mean(r["cost_cny"] or 0 for r in executed), 5),
+        },
+    }
+
     jsonl_path.write_text(
         "\n".join(json.dumps(r, ensure_ascii=False) for r in results), encoding="utf-8"
     )
+    summary_path = outdir / f"baseline-{today}-{args.mode}.summary.json"
+    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     md_path.write_text(
-        render_report(results, items, gen_scores, retrieval, decisions, breakdown, bindings),
+        render_report(results, items, gen_scores, retrieval, decisions, breakdown, bindings,
+                      citations),
         encoding="utf-8",
     )
     print(f"\n[report] {md_path}")
     print(f"[jsonl] {jsonl_path}")
+    print(f"[summary] {summary_path}")
     print(json.dumps({"bindings": bindings, "retrieval": retrieval, "generation": gen_scores,
                       "decisions": decisions},
                      ensure_ascii=False, indent=2))

@@ -48,7 +48,7 @@ retrieval:
   top_k_scoring: [5, 7]        # Recall@5 / Recall@7
   query_max_chars: 2000
   request_timeout_s: 30
-  score_threshold: 0.2         # 当前 DEFAULT_RETRIEVAL_K 配套阈值
+  score_threshold: 0.4         # 2026-09-10 勘误：实现与 Day 1 基线报告绑定值均为 0.4，原记录 0.2 为冻结当日笔误
 
 # ── 生成/问答预算（实现前冻结）───────────────────────────────
 generation:
