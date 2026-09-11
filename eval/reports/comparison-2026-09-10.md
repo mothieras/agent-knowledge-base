@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 基线评测 commit | `c06487d`（规模实测在 `5b307f9` 执行；src/ 差异仅 config.py 数据/缓存目录的环境变量钉定——默认路径行为不变，规模实测按设计使用覆盖路径——与新增客户端脚本 smoke_mcp.py） |
+| 基线评测 commit | `6abf25c`（规模实测在 `756b4d5` 执行；src/ 差异仅 config.py 数据/缓存目录的环境变量钉定——默认路径行为不变，规模实测按设计使用覆盖路径——与新增客户端脚本 smoke_mcp.py） |
 | golden set / 挑战集 | 30 条（6 类题型 × 5）/ 40 条（绑定 hash 见 acceptance.yaml） |
 | index | `sha256:0df9fbfa…`（354 child chunks，manifest hash `5c702f3c358fd1b5`） |
 | 模型 | deepseek-chat（生成与 judge 同模型）/ dense Qwen/Qwen3-Embedding-0.6B + sparse Qdrant/bm25 |
@@ -95,7 +95,7 @@ agentic 的成本来自编排本身：改写/拆解/聚合/校验平均 6.83 次
 ### 口径备注
 
 - per-item jsonl 中命中 `score` 为 `null` 是设计行为：hit 契约（RetrievalHit）不携带融合分数，阈值过滤在 `similarity_search(score_threshold=0.4)` 内部对 hybrid 分数生效。
-- 与检索服务化 commit 旧场（745f82a）相比存在 LLM 方差：rag misrefusal 0.200→0.100（answered 20→21）、faithfulness 0.991→0.968；agentic 侧 decision 指标稳定（两次均为零误拒）。方差方向不改变对照结论：单图误拒源于结构（一次检索即放弃），双图修复全部 FP 的同时付出 ~8-9× 成本。
+- 与检索服务化 commit 旧场（21f43a0）相比存在 LLM 方差：rag misrefusal 0.200→0.100（answered 20→21）、faithfulness 0.991→0.968；agentic 侧 decision 指标稳定（两次均为零误拒）。方差方向不改变对照结论：单图误拒源于结构（一次检索即放弃），双图修复全部 FP 的同时付出 ~8-9× 成本。
 - legacy 非误拒率（历史 HITL 口径）与新 refusal precision 并列不直接比较。
 
 ## 规模与并发实测

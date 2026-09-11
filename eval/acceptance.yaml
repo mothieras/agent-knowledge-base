@@ -33,7 +33,7 @@ corpus_binding:
 
 # ── 冻结基线绑定（行为实现前）───────────────────────────────
 baseline_freezing:
-  git_commit: 2771a33147e4ee6edd427cc6443c7de8dfa4cb91
+  git_commit: 74c6a4f147e4ee6edd427cc6443c7de8dfa4cb91
   run_date: "2026-09-07"
   report_md_sha256: 9dbe002e0a61d966a5b5175ab737d4d6af6fce98fdd74f84990fc0465ca94cd0
   peritem_jsonl_sha256: 0af89dc561b4d726c01db6c929c1c67a6fb69b265da419626b39d3e61a5ef35e

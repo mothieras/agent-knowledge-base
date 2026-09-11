@@ -2,7 +2,7 @@
   "bindings": {
     "mode": "rag",
     "date": "2026-09-10",
-    "git_commit": "c06487d2423c4d1be9b24f317ebf842cd4bb368c",
+    "git_commit": "6abf25c2423c4d1be9b24f317ebf842cd4bb368c",
     "manifest_hash": "5c702f3c358fd1b5",
     "golden_lines": 30,
     "index_points": 354,

@@ -1,7 +1,16 @@
-# CONTEXT — 领域词汇表
+# ARCHITECTURE — 分层与领域词汇
 
-本文件是本项目的领域词汇真相源之一,随架构决策演进;新增或锐化概念时在此更新。
-架构评审(`/improve-codebase-architecture`)以这些词命名缝隙与模块,不另造 "component / service / boundary"。
+本文件是本项目的架构与领域词汇真相源,随架构决策演进;新增或锐化概念时在此更新。架构讨论以这些词命名模块与缝隙,不另造 "component / service / boundary"。
+
+## 分层
+
+上层只依赖下层的稳定接口,依赖方向保持单向:
+
+- **L0** `db/` + 检索层:Qdrant hybrid 检索、parent store、快照;分词 BM25 / RRF / rerank、版本过滤都在这层演进
+- **L1** `rag_agent/`:普通 RAG 单图与双图的编排、decision 与证据约束
+- **L2** `core/`:bootstrap、资源/运行生命周期、检索与可选问答的公开应用接口
+- **L3** `api/`:HTTP(FastAPI/SSE)与 MCP 的稳定薄前——只调用 L2 公共接口,不 import `db/` / `rag_agent/` 内部
+- **L4** `client/` + `ui/`:HTTP/SSE 客户端与 Gradio 薄映射;外部 MCP 客户端同样只消费协议
 
 ## 检索
 
@@ -13,7 +22,7 @@
 
 ## 产品术语（检索优先演示版，已实现）
 
-范围与后续见 [PLAN](PLAN.md)，完成状态以根 [README](README.md) 为准。
+范围与完成状态以根 [README](../README.md) 为准。
 
 - **直接检索**：无需生成模型的 search/原文回查；生成由调用者决定。不是“单图问答”的别名。
 - **普通 RAG / `rag`**：固定检索→组织上下文→生成的 LangGraph 单图，不做 Agent 工具循环。
@@ -22,9 +31,3 @@
 - **证据标识 / `evidence_id`**：绑定快照与准确原文片段的公开回查标识；旧快照缺失时不能解析到同名新内容。
 - **单次 decision**：`answered / clarification_required / refused`，都结束本次请求；澄清不是服务器暂停等待同 thread 恢复。
 - **检索优先演示版**：受控只读资料库＋检索/问答/接入评测；知识库本体（身份、公私分区、协作写入、文档历史）明确顺延。
-
-## 分阶段落地（历史记录）
-
-- **Stage 1**:`RetrievalHit` + `Retriever` 协议 + `InMemoryRetriever` + 路径测试(search→compress→aggregate 全链路) + chunk 缝隙修(manifest 元数据进 chunk)。先把测试面立起来。
-- **Stage 2**:`QdrantRetriever` + 重接 `tools / nodes / events / eval` 吃 `RetrievalHit`,删除 `CHILD_CHUNK_SEPARATOR` 拼接、`"File Name:"` 解析、`record_retrieval` 旁路。
-- **Stage 3**:证据契约收尾——`chunk_id`(child 枚举 `{parent_id}_c{j}`,provenance 主键;Qdrant point id 仍是 UUID 存储细节)、`span`(`add_start_index` 用 find 定位,`parent.content[start:end] == child.content` 精确成立)、`retrieval_channel`;受治理 fixture 落地;真实本地索引集成测试(`skipif` 无索引,验证 metadata 全链路传播与 span 精确反查);eval `retrieval_hits` 升级为含 version/chunk_id 的结构化 artifact。

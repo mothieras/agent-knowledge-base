@@ -1,4 +1,4 @@
-# Agentic-RAG：中文 RAG 技术知识库服务
+# Agent Knowledge Base
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)](https://github.com/langchain-ai/langgraph)
@@ -6,56 +6,57 @@
 [![Code License: MIT](https://img.shields.io/badge/code-MIT-blue.svg)](LICENSE)
 [![Corpus License: CC BY-NC-SA 4.0](https://img.shields.io/badge/corpus-CC%20BY--NC--SA%204.0-lightgrey.svg)](data/THIRD_PARTY_NOTICES.md)
 
-面向中文 RAG 学习与技术问答场景的 Agentic RAG 工程化实验：在开源 LangGraph 教学底座上，加入公开语料治理、DeepSeek 适配、可复现评测和 FastAPI/SSE 服务层。
+自托管、给 Agent 用的知识库服务：hybrid 检索、可精确回查的证据（span/版本/内容哈希）、HTTP 与 MCP 只读接入，以及 rag/agentic 双模式单次问答。入库与证据链路由 manifest 驱动，语料可整体替换；仓库内置一份受治理的中文 RAG 示例语料与配套评测集，本页评测结果均在该示例语料上测得。
 
 > **状态：活跃原型。** 适合学习、评测和本地演示；当前没有认证、限流、TLS 或持久会话，不能直接暴露到公网。
 
 ## 产品方向与本次交付范围（已确认；检索优先演示版已交付，见发布清单）
 
-新定位是**自托管知识检索服务**：以 RAG 质量和可追溯证据为核心，同一个 FastAPI 应用提供 HTTP 与 MCP；生成模型可选，普通 RAG 单图与 Agentic RAG 双图共用模型配置。
+本服务是**给 Agent 用的自托管知识库**：以检索质量与可追溯证据为核心，同一个 FastAPI 应用提供 HTTP 与 MCP——外部 Agent 把 search/get_context 当工具、取带 span 与版本的证据、用自己的模型作答，也可以委托服务端单次问答。生成模型可选，普通 RAG 单图与 Agentic RAG 双图共用模型配置。
 
-已交付的切片是**检索优先演示版**，主要用于学习与求职展示：
+已交付的切片是**检索优先演示版**——知识库本体的第一块：
 
 - **已交付**：受控资料离线导入；无生成模型也可用的 HTTP/MCP 检索与证据回查；单次普通 RAG/双图 Agent 问答及同配置效果、延迟、成本对照；可复现评测与规模/并发实测；Python/Docker 与现有 Gradio 演示。
 - **明确顺延**：每 Agent 身份与私有分区、公共协作写入、异步入库 API、文档历史和在线版本生命周期。演示版所有获准访问者看到同一固定资料库，不宣传完整共享知识服务。
-- **不纳入新产品**：内置 Web/Chrome 工具、自动记忆学习、跨请求聊天历史或 HITL 恢复、管理后台、OCR。
+- **不纳入本服务**：内置 Web/Chrome 工具、自动记忆学习、跨请求聊天历史或 HITL 恢复、管理后台、OCR。
 
 文档分工：
 
-- [作战计划](PLAN.md)：定位（最终形态为给 Agent 用的自托管知识库）、收尾两步、评测纪律与范围变更原则。原 PRD / DESIGN / ROADMAP 已归档至 [docs/archive/](docs/archive/)，仅作追溯。
+- [ARCHITECTURE](docs/ARCHITECTURE.md)：分层依赖规则与领域词汇表。
 
-**以下“已实现能力”、当前接口和历史报告描述代码现状与验证证据；未声明的能力与后续范围以 [作战计划](PLAN.md) 为准。**
+**以下“已实现能力”、当前接口和历史报告描述代码现状与验证证据；未声明的能力与后续范围以下方「尚未作为已完成能力声明」为准。**
 
-## 这个 fork 做什么
+## 项目背景：从开源底座到独立系统
 
-原项目很好地展示了 Agentic RAG 的基本结构。本 fork 不把“重写框架”当目标，而是模拟更常见的工程任务：接手一个可运行的开源底座，把它改造成面向具体领域、能够测量、能够通过 API 集成的系统。
+本项目脱胎于开源 LangGraph 教学项目 [agentic-rag-for-dummies](https://github.com/GiovanniPasq/agentic-rag-for-dummies)，不把“重写框架”当目标，而是模拟更常见的工程任务：接手一个可运行的开源底座，把它改造成能够测量、能够通过 API 集成的知识库服务。如今两者已是两套系统：底座是 40 文件的教学 demo，本仓库是 157 文件的服务——132 个文件为本项目新增，约 20 个沿上游模块演进的文件集中在 LangGraph 双图骨架与检索基础设施（逐项对照见下表）。
 
 目前已交付的增量集中在四条线上：
 
 - **模型适配**：运行时改为 OpenAI-compatible `ChatOpenAI`，默认接入 DeepSeek；查询改写使用 DeepSeek 支持的 JSON mode。
-- **语料治理**：用 manifest 管理固定版本的公开中文 RAG 教程，记录逐文件来源、许可与 SHA-256，并在同步时清除清单外残留。
+- **语料治理**：用 manifest 管理固定版本的示例语料，记录逐文件来源、许可与 SHA-256，并在同步时清除清单外残留。
 - **评测闭环**：维护 30 条、6 类题型的 golden set，记录检索、生成、拒答/澄清、延迟、token 与成本指标。
 - **服务化**：增加 FastAPI 同步调用与 SSE 流式协议；Gradio 只作为 API 客户端，不再直接持有 RAG 运行时。
 
 ## 来源与归属
 
-本仓库是 [GiovanniPasq/agentic-rag-for-dummies](https://github.com/GiovanniPasq/agentic-rag-for-dummies) 的二次开发版本，不是上游项目的官方延续。
+本仓库脱胎于 [GiovanniPasq/agentic-rag-for-dummies](https://github.com/GiovanniPasq/agentic-rag-for-dummies)，以该教学项目为底座独立演进而来，不是上游项目的官方延续。
 
 - **原作者**：[Giovanni Pasqualino](https://github.com/GiovanniPasq)
 - **上游许可**：MIT；原始版权声明保留在 [`LICENSE`](LICENSE)
-- **当前检索语料**：来自 [`mothieras/all-in-rag`](https://github.com/mothieras/all-in-rag) 固定修订版，遵循 CC BY-NC-SA 4.0，不适用本仓库代码的 MIT License；详见 [`data/THIRD_PARTY_NOTICES.md`](data/THIRD_PARTY_NOTICES.md)
+- **示例语料**：来自 [`mothieras/all-in-rag`](https://github.com/mothieras/all-in-rag) 固定修订版，遵循 CC BY-NC-SA 4.0，不适用本仓库代码的 MIT License；详见 [`data/THIRD_PARTY_NOTICES.md`](data/THIRD_PARTY_NOTICES.md)
+- **历史迁移**：本仓库自旧仓 [mothieras/agentic-rag-for-dummies](https://github.com/mothieras/agentic-rag-for-dummies)（已归档）以干净历史迁入——首笔为上游底座快照，其后提交与旧仓逐笔对应、代码树逐笔恒等；评测报告中的 commit 哈希已重绑至本仓库对应提交。
 
-下表明确区分继承能力与本 fork 的工作：
+下表明确区分继承能力与本项目的增量：
 
-| 领域 | 上游底座 | 本 fork 的增量 |
+| 领域 | 上游底座 | 本项目的增量 |
 |---|---|---|
 | Agent 编排 | LangGraph 主图/子图、查询改写、HITL 澄清、并行子问题、上下文压缩 | DeepSeek JSON mode 适配；单次化：固定 RAG 单图 + 双图单次 decision 协议、共享请求预算、引用机械校验与一次修复 |
-| 检索 | 父子分块、Qdrant dense + sparse hybrid retrieval、文件型 parent store | 公开中文 RAG 语料、固定 revision 与哈希校验、来源 metadata、检索 recorder 与分维度评测 |
+| 检索 | 父子分块、Qdrant dense + sparse hybrid retrieval、文件型 parent store | 示例中文 RAG 语料、固定 revision 与哈希校验、来源 metadata、检索 recorder 与分维度评测 |
 | 应用入口 | Gradio 教学应用 | FastAPI `/search` `/evidence` `/invoke` `/stream`、MCP 只读+问答工具、独立 HTTP/SSE client；Gradio 改为薄客户端 |
 | 评测 | — | 30 条领域 golden set、40 题检索挑战集、自动评测 runner、基线报告与 badcase 信号 |
 | 可运行性 | 本地教学项目 | 环境变量驱动的 DeepSeek 配置、生成模型可选的检索服务、smoke script、API/schema/graph 测试 |
 
-完整提交差异也可通过 GitHub 的 [fork compare](https://github.com/GiovanniPasq/agentic-rag-for-dummies/compare/main...mothieras:main) 查看。
+完整提交差异可通过 GitHub 的[上游代码对比](https://github.com/GiovanniPasq/agentic-rag-for-dummies/compare/main...mothieras:main)查看（对比基准为迁移前的旧仓）。
 
 ## 已实现能力
 
@@ -151,8 +152,8 @@ L0  Qdrant hybrid retrieval + parent store + corpus
 需要 Python 3.11+。
 
 ```bash
-git clone https://github.com/mothieras/agentic-rag-for-dummies.git
-cd agentic-rag-for-dummies
+git clone https://github.com/mothieras/agent-knowledge-base.git
+cd agent-knowledge-base
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -230,15 +231,15 @@ API_URL=http://127.0.0.1:8000 python app.py
 ### 6. Docker 运行（可选）
 
 ```bash
-docker build -t agentic-rag-demo .
-docker run -d --name rag-demo -p 8000:8000 \
+docker build -t agent-kb-demo .
+docker run -d --name agent-kb -p 8000:8000 \
   -v "$PWD/qdrant_db:/app/qdrant_db" \
   -v "$PWD/parent_store:/app/parent_store" \
   -v "$HOME/.cache/huggingface:/app/.cache/huggingface" \
   -v "$PWD/.fastembed_cache:/app/.cache/fastembed" \
   -e HF_HUB_OFFLINE=1 \
   [-e DEMO_API_TOKEN=<token>] [-e DEEPSEEK_API_KEY=sk-...] \
-  agentic-rag-demo
+  agent-kb-demo
 ```
 
 - 入口脚本发现 `/app/qdrant_db/snapshot_manifest.json` 不存在时先入库（需联网下载嵌入模型，建议直接挂载已有索引/模型缓存卷）再启动 API；已有快照则直接启动。
@@ -248,7 +249,7 @@ docker run -d --name rag-demo -p 8000:8000 \
 
 ## 评测
 
-评测集位于 [`eval/golden_set.jsonl`](eval/golden_set.jsonl)，覆盖：
+以下评测在内置示例语料（中文 RAG 教程集 + 受治理版本 fixture）上测得；更换语料需重建索引并重跑全部评测。golden set 位于 [`eval/golden_set.jsonl`](eval/golden_set.jsonl)，覆盖：
 
 ```text
 exact_term · concept_contrast · multi_hop
@@ -311,6 +312,17 @@ env -u ALL_PROXY -u all_proxy ../.venv/bin/python run_challenge.py
 
 检索挑战集（40 题直接检索）回归锚点 Recall@5=1.000 与冻结基线持平（见 [`eval/reports/challenge-2026-09-10.md`](eval/reports/challenge-2026-09-10.md)），全量指标 Recall@5=0.950、MRR=0.933、2 题 hard-negative 泄漏与 2026-09-09 场持平。Recall 1.000 只代表这套固定语料与 golden set，不是对开放问题的泛化承诺。
 
+### 评测纪律
+
+只有这几条是硬的，其余数字是记录、不是门禁：
+
+1. 质量集完整执行，0 ERROR / 0 SKIP；错误与跳过保留在分母
+2. 每份报告绑定 commit / index_id / 模型 / 参数；发布证据必须出自最终 commit
+3. 饱和数字如实标注口径：Recall 1.000 只是这套固定示例语料 golden set 的结果，不是通用上限
+4. 负结果有效：不预设双图更好；不改题、不删 badcase、不挑最好一次
+5. 历史口径不冒充新口径：legacy 非误拒率 ≠ refusal precision，HITL 暂停率 ≠ 单次澄清率，并列不同比
+6. 改检索 / Agent / 语料才重跑全量 eval；纯文档改动不跑付费评测
+
 ## 测试
 
 ```bash
@@ -349,10 +361,10 @@ src/
   schema/          HTTP/MCP 共用 DTO 与 SSE event schemas
   ui/              Gradio presentation
 
-data/              governed corpus + manifest
+data/              受治理示例语料、manifest 与版本 fixture
 eval/              golden set、挑战集、metrics、runner 和 reports
 tests/             API/schema/graph/validation tests
-docs/              归档：原 PRD/DESIGN/ROADMAP、检查点与旧路线
+docs/              架构：分层依赖规则与领域词汇（ARCHITECTURE.md）
 ```
 
 ## 当前边界与路线图
@@ -388,11 +400,6 @@ docs/              归档：原 PRD/DESIGN/ROADMAP、检查点与旧路线
 - 中文分词 BM25、自定义 RRF、reranker、按版本/有效期过滤（已有元数据不等于已执行过滤；ch029 是版本过滤的现成靶子）
 - 每 Agent 身份、公私分区、协作编辑、异步入库和文档历史生命周期（已顺延）
 - 限流、TLS、生产级部署；新产品以单次请求为语义，不再提供跨请求会话
-
-### 下一步
-
-1. 发布后第一优先是版本/有效期过滤（L0 执行过滤 + ch029 泄漏回归；注意 version_conflict 题按设计需返回两版，过滤不得误伤）。
-2. 知识库本体（身份/分区/协作写入/文档历史，归档 PRD F-01~F-09）与检索实证升级（挑战集→消融→晋升）另行排期。收尾细节与评测纪律见 [作战计划](PLAN.md)，旧 M0–M6 计划保留在[历史归档](docs/archive/roadmap-before-retrieval-demo.md)。
 
 ## License
 
