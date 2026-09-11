@@ -12,6 +12,7 @@ eval/scale_artifacts/
 .superpowers/
 .commandcode/
 AGENTS.md
+PLAN.md
 
 ragas_*.csv
 rag_evaluation_*.csv
