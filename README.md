@@ -8,227 +8,67 @@
 
 自托管、给 Agent 用的知识库服务：hybrid 检索、可精确回查的证据（span/版本/内容哈希）、HTTP 与 MCP 只读接入，以及 rag/agentic 双模式单次问答。入库与证据链路由 manifest 驱动，语料可整体替换；仓库内置一份受治理的中文 RAG 示例语料与配套评测集，本页评测结果均在该示例语料上测得。
 
-> **状态：活跃原型。** 适合学习、评测和本地演示；当前没有认证、限流、TLS 或持久会话，不能直接暴露到公网。
+> **状态：活跃原型，面向本地部署。** 鉴权可选（Bearer）；未内置限流与 TLS，不建议直接暴露公网。
 
-## 产品方向与本次交付范围（已确认；检索优先演示版已交付，见发布清单）
+## Why
 
-本服务是**给 Agent 用的自托管知识库**：以检索质量与可追溯证据为核心，同一个 FastAPI 应用提供 HTTP 与 MCP——外部 Agent 把 search/get_context 当工具、取带 span 与版本的证据、用自己的模型作答，也可以委托服务端单次问答。生成模型可选，普通 RAG 单图与 Agentic RAG 双图共用模型配置。
+LLM Agent 的答案质量取决于它引用的事实是否可信。与其让模型在参数里猜，不如给它一个可回查的事实来源：检索命中带精确 span 与版本元数据，引用经机械校验必须命中真实证据，过期版本有明确标识。过程上下文归调用方的 agent，事实依据归本库——服务无会话状态。
 
-已交付的切片是**检索优先演示版**——知识库本体的第一块：
+三种用法：
 
-- **已交付**：受控资料离线导入；无生成模型也可用的 HTTP/MCP 检索与证据回查；单次普通 RAG/双图 Agent 问答及同配置效果、延迟、成本对照；可复现评测与规模/并发实测；Python/Docker 与现有 Gradio 演示。
-- **明确顺延**：每 Agent 身份与私有分区、公共协作写入、异步入库 API、文档历史和在线版本生命周期。演示版所有获准访问者看到同一固定资料库，不宣传完整共享知识服务。
-- **不纳入本服务**：内置 Web/Chrome 工具、自动记忆学习、跨请求聊天历史或 HITL 恢复、管理后台、OCR。
+- **Agent 接地**（重心）：外部 MCP 客户端（Pi 等）把 search/get_context 当工具，取带 span/版本的证据，用自己的模型回答
+- **问答委托**：应用调 ask_knowledge 得 decision（answered/澄清/拒答）与机械校验过的引用；rag/agentic 双模式同时是接地质量与编排成本的测量仪
+- **多 Agent 共享知识**（规划中）：身份、公共/私有分区、协作写入、文档历史
 
-文档分工：
+## Features
 
-- [ARCHITECTURE](docs/ARCHITECTURE.md)：分层依赖规则与领域词汇表。
+- **Hybrid 检索**：Qdrant dense + FastEmbed BM25 sparse 融合；父子分块，child 命中、parent 全文取回
+- **证据可精确回查**：`evidence_id` → 有界原文窗口，`content_hash` 客户端可复算，span 是父文本的精确字符切片
+- **引用机械校验**：evidence_id 必属本次实际证据、quote 必须是证据原文精确子串；预算内自动修复一次，仍失败显式报错——不伪造引用
+- **单次 decision 协议**：`answered / clarification_required / refused` 皆为终态；无会话、无跨请求状态
+- **双模式问答**：`rag` 单图（快、便宜）与 `agentic` 双图（改写/拆解/并行补查，共享请求级预算：3 子问题 / 8 工具调用 / 10 迭代），同 index/模型同场对照见 Evaluation
+- **MCP 只读接入**：Streamable HTTP 端点 + Bearer 鉴权，Agent 的工具即知识库
+- **manifest 语料治理**：逐文件登记来源、许可、SHA-256；同步采用镜像语义清理清单外残留，语料可整体替换
+- **版本元数据全链路**：version / effective_date / expired_date / priority 从 manifest 流经 chunk → 检索 → API → eval
+- **可复现评测**：30 题 golden set（6 类题型）、40 题检索挑战集、规模与并发实测；报告绑定 commit / index / 模型 / 参数
+- **生成模型可选**：未配置 key 时检索照常 ready，问答返回明确的 `llm_not_configured`
 
-**以下“已实现能力”、当前接口和历史报告描述代码现状与验证证据；未声明的能力与后续范围以下方「尚未作为已完成能力声明」为准。**
-
-## 项目背景：从开源底座到独立系统
-
-本项目脱胎于开源 LangGraph 教学项目 [agentic-rag-for-dummies](https://github.com/GiovanniPasq/agentic-rag-for-dummies)，不把“重写框架”当目标，而是模拟更常见的工程任务：接手一个可运行的开源底座，把它改造成能够测量、能够通过 API 集成的知识库服务。如今两者已是两套系统：底座是 40 文件的教学 demo，本仓库是 157 文件的服务——132 个文件为本项目新增，约 20 个沿上游模块演进的文件集中在 LangGraph 双图骨架与检索基础设施（逐项对照见下表）。
-
-目前已交付的增量集中在四条线上：
-
-- **模型适配**：运行时改为 OpenAI-compatible `ChatOpenAI`，默认接入 DeepSeek；查询改写使用 DeepSeek 支持的 JSON mode。
-- **语料治理**：用 manifest 管理固定版本的示例语料，记录逐文件来源、许可与 SHA-256，并在同步时清除清单外残留。
-- **评测闭环**：维护 30 条、6 类题型的 golden set，记录检索、生成、拒答/澄清、延迟、token 与成本指标。
-- **服务化**：增加 FastAPI 同步调用与 SSE 流式协议；Gradio 只作为 API 客户端，不再直接持有 RAG 运行时。
-
-## 来源与归属
-
-本仓库脱胎于 [GiovanniPasq/agentic-rag-for-dummies](https://github.com/GiovanniPasq/agentic-rag-for-dummies)，以该教学项目为底座独立演进而来，不是上游项目的官方延续。
-
-- **原作者**：[Giovanni Pasqualino](https://github.com/GiovanniPasq)
-- **上游许可**：MIT；原始版权声明保留在 [`LICENSE`](LICENSE)
-- **示例语料**：来自 [`mothieras/all-in-rag`](https://github.com/mothieras/all-in-rag) 固定修订版，遵循 CC BY-NC-SA 4.0，不适用本仓库代码的 MIT License；详见 [`data/THIRD_PARTY_NOTICES.md`](data/THIRD_PARTY_NOTICES.md)
-- **历史迁移**：本仓库自旧仓 [mothieras/agentic-rag-for-dummies](https://github.com/mothieras/agentic-rag-for-dummies)（已归档）以干净历史迁入——首笔为上游底座快照，其后提交与旧仓逐笔对应、代码树逐笔恒等；评测报告中的 commit 哈希已重绑至本仓库对应提交。
-
-下表明确区分继承能力与本项目的增量：
-
-| 领域 | 上游底座 | 本项目的增量 |
-|---|---|---|
-| Agent 编排 | LangGraph 主图/子图、查询改写、HITL 澄清、并行子问题、上下文压缩 | DeepSeek JSON mode 适配；单次化：固定 RAG 单图 + 双图单次 decision 协议、共享请求预算、引用机械校验与一次修复 |
-| 检索 | 父子分块、Qdrant dense + sparse hybrid retrieval、文件型 parent store | 示例中文 RAG 语料、固定 revision 与哈希校验、来源 metadata、检索 recorder 与分维度评测 |
-| 应用入口 | Gradio 教学应用 | FastAPI `/search` `/evidence` `/invoke` `/stream`、MCP 只读+问答工具、独立 HTTP/SSE client；Gradio 改为薄客户端 |
-| 评测 | — | 30 条领域 golden set、40 题检索挑战集、自动评测 runner、基线报告与 badcase 信号 |
-| 可运行性 | 本地教学项目 | 环境变量驱动的 DeepSeek 配置、生成模型可选的检索服务、smoke script、API/schema/graph 测试 |
-
-完整提交差异可通过 GitHub 的[上游代码对比](https://github.com/GiovanniPasq/agentic-rag-for-dummies/compare/main...mothieras:main)查看（对比基准为迁移前的旧仓）。
-
-## 已实现能力
-
-### Agent 与检索
-
-- 两种问答图共用一套模型配置：`rag` 固定单图（retrieve → assemble_context → generate → validate_result，零命中确定性拒答，不做改写或工具循环）；`agentic` 双图（主图改写/拆解 → 并行子图检索 → 聚合 → 校验）。
-- 主图/子图共享请求级预算（最多 3 子问题、8 次工具调用、10 次迭代）；调用工具前预留预算。
-- 单次 decision 协议：`answered` / `clarification_required` / `refused`，`clarification_required` 是终态而非暂停点；`/history` 与 `thread_id` 已退役。
-- 引用机械校验（`rag_agent/validation.py`）：evidence_id 必须属于本次实际取得的证据集合，quote 必须是证据原文精确子串，span 由 quote 位置推导并绑定快照；失败在预算内修复一次，仍失败返回 `result_validation_failed`，不伪造引用、不冒充正常拒答。
-- Qdrant 以本地模式保存 dense 与 FastEmbed BM25 sparse vectors，并使用 hybrid retrieval。
-- 检索证据走类型化 `RetrievalHit` 契约（`db/retrieval.py`）：`source`/`version`/有效期/`priority` 等 manifest 元数据 + `chunk_id` + 父文本精确 `span` 切片 + `retrieval_channel`，流经图 state、SSE 事件与 eval，全程无字符串解析。`Retriever` 协议由 `QdrantRetriever`（prod）与 `InMemoryRetriever`（test）两个适配器坐实。
-- 生成模型可选：未配置时检索照常 ready，问答明确返回 `llm_not_configured`。
-
-### 语料治理
-
-[`data/manifest.json`](data/manifest.json) 是入库清单，当前从 `all-in-rag` 选取 14 篇中文 Markdown，覆盖七类 topic：
-
-- RAG 基础
-- 数据加载与文本分块
-- Embedding、向量数据库与索引优化
-- 混合检索、查询构建/改写与重排压缩
-- 格式化生成与 Function Calling
-- RAG 评估方法与工具
-- 知识图谱增强 RAG
-
-每条语料记录固定来源 URL、许可、topic、revision 和 SHA-256；同步脚本会删除已退出清单的陈旧文件。规则见 [`data/README.md`](data/README.md)。
-
-另有项目自有的受治理版本冲突 fixture（[`data/fixtures/`](data/fixtures/)，MIT 许可）：两对虚构政策文档各含一个已过期与一个当前有效版本，入库进同一 collection，用于验证 manifest 元数据（version/有效期/priority）全链路传播，并为版本冲突评测提供素材。
-
-### API 协议
-
-| 方法 | 路径 | 用途 |
-|---|---|---|
-| `GET` | `/health` | 检索 readiness（不依赖 LLM） |
-| `GET` | `/info` | 快照 index_id、模型标识、可用 modes |
-| `POST` | `/search` | 结构化证据检索（无生成模型调用） |
-| `GET` | `/evidence/{evidence_id}` | 按 ID 回查有界原文窗口 |
-| `POST` | `/invoke` | 单次问答（`mode`=rag/agentic，默认 rag） |
-| `POST` | `/stream` | 同一问答契约的 SSE 进度与结果 |
-| `GET` | `/history` | 已退役（410）：单次请求语义，不保留会话 |
-
-问答结果统一为单次 decision 协议：
-
-```text
-request_id · index_id · mode
-decision = answered | clarification_required | refused
-answer · clarification_question? · limitations[]
-citations[] = citation_id + evidence_id + source + chunk_id + span + quote
-usage = input/output tokens + estimated cost + model calls
-```
-
-`thread_id` 等旧协议字段被明确拒绝（参数错误），不静默忽略。`/invoke` 与 `/stream` 的 SSE 使用结构化事件：
-
-```text
-status · tool_call · tool_result · done · error
-```
-
-`done` 事件携带**校验后**的完整 `AnswerResponse`（引用经机械校验可精确回查，答案不再实时流式输出未校验文本）；异常恰好一个 `error`。
-
-## 服务化（FastAPI + SSE）
-
-```text
-L4  Gradio UI
-        |
-        v
-    AgentClient (HTTP / SSE)
-        |
-L3  FastAPI  /health /info /search /evidence /invoke /stream · /mcp
-        |
-L2  AppService  search/read_evidence + AnswerService  rag/agentic 单次问答
-        |
-L1  LangGraph  rag 单图 · agentic 主图 + 检索子图
-        |
-L0  Qdrant hybrid retrieval + parent store + corpus
-```
-
-依赖方向保持单向：UI 只依赖 client；API 只通过 L2 公共接口使用检索与问答，不 import `db/` / `rag_agent/` 内部；检索和 Agent 内部可以继续演进而不改变 HTTP 协议。生成模型可选：未配置 `DEEPSEEK_API_KEY` 时检索照常 ready，问答返回明确的 `llm_not_configured`。
-
-主要代码入口：
-
-- [`src/api/`](src/api/)：FastAPI 路由、SSE 序列化、MCP 工具与访问边界
-- [`src/client/`](src/client/)：HTTP/SSE 客户端
-- [`src/core/app_service.py`](src/core/app_service.py)：检索先于生成的 composition root
-- [`src/core/retrieval_service.py`](src/core/retrieval_service.py)：search/read_evidence 与公共证据 DTO
-- [`src/core/answer_service.py`](src/core/answer_service.py)：单次问答、预算、usage 与事件
-- [`src/rag_agent/`](src/rag_agent/)：rag 单图、agentic 主图/子图、引用校验
-- [`src/schema/dto.py`](src/schema/dto.py)：HTTP/MCP 共用请求、证据、答案与 SSE event schemas
-
-## 快速开始
-
-### 1. 安装依赖
+## Quick Start
 
 需要 Python 3.11+。
 
 ```bash
 git clone https://github.com/mothieras/agent-knowledge-base.git
 cd agent-knowledge-base
-
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-### 2. 配置模型
+（可选）配置生成模型——不配置也能完整使用检索与证据回查：
 
 ```bash
 cp .env.example .env
+# DEEPSEEK_API_KEY=sk-...  LLM_MODEL=deepseek-chat  LLM_BASE_URL=...  JUDGE_MODEL=...
 ```
 
-在 `.env` 中填写：
-
-```dotenv
-DEEPSEEK_API_KEY=sk-...
-LLM_MODEL=deepseek-chat
-LLM_BASE_URL=https://api.deepseek.com
-JUDGE_MODEL=deepseek-chat
-```
-
-`.env` 已被 Git 忽略，不要提交真实密钥。
-
-### 3. 构建本地索引
-
-首次运行会下载 embedding 模型，并根据 manifest 重建本地 Qdrant 与 parent store：
+构建本地索引（首次运行会下载 embedding 模型）并启动 API：
 
 ```bash
-# 可选：从固定 revision 重新下载并校验公开语料
-python3 data/sync_sources.py
-
 python src/ingest_corpus.py
+cd src && uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
-
-### 4. 启动 API
 
 ```bash
-cd src
-uvicorn api.main:app --host 127.0.0.1 --port 8000
+curl http://127.0.0.1:8000/health                                   # 检索 readiness（不依赖 LLM）
+curl http://127.0.0.1:8000/invoke -H 'Content-Type: application/json' \
+  -d '{"message":"什么是 HyDE？","mode":"rag"}'                     # 单次问答
+curl -N http://127.0.0.1:8000/stream -H 'Content-Type: application/json' \
+  -d '{"message":"解释 HyDE 如何改写检索问题","mode":"agentic"}'    # SSE 流式
 ```
 
-检查 readiness：
+Gradio 客户端：`cd src && API_URL=http://127.0.0.1:8000 python app.py`（UI 只是 API 的薄客户端）。
 
-```bash
-curl http://127.0.0.1:8000/health
-```
-
-流式调用示例：
-
-```bash
-curl -N http://127.0.0.1:8000/stream \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"解释 HyDE 如何改写检索问题","mode":"agentic"}'
-```
-
-非流式单次问答（`mode` 默认 `rag`）：
-
-```bash
-curl http://127.0.0.1:8000/invoke \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"什么是 HyDE？","mode":"rag"}'
-```
-
-未配置 `DEEPSEEK_API_KEY` 时服务照常 ready：`/search`、`/evidence`、MCP 检索工具可用，问答返回 `llm_not_configured`。
-
-### 5. 启动 Gradio 客户端
-
-另开终端：
-
-```bash
-cd src
-API_URL=http://127.0.0.1:8000 python app.py
-```
-
-### 6. Docker 运行（可选）
+### Docker
 
 ```bash
 docker build -t agent-kb-demo .
@@ -242,37 +82,37 @@ docker run -d --name agent-kb -p 8000:8000 \
   agent-kb-demo
 ```
 
-- 入口脚本发现 `/app/qdrant_db/snapshot_manifest.json` 不存在时先入库（需联网下载嵌入模型，建议直接挂载已有索引/模型缓存卷）再启动 API；已有快照则直接启动。
-- 镜像约 7 GB（含 torch/CUDA 运行库；slim 化留作后续优化）。
-- `DEMO_API_TOKEN` 设置后 HTTP 与 MCP 端点统一要求 `Authorization: Bearer <token>`（无/错凭据返回 401）；不设置则本地开发免鉴权。
-- MCP 客户端接入：Streamable HTTP 端点 `http://127.0.0.1:8000/mcp`，工具 `search_knowledge` / `get_context`（`ask_knowledge` 仅在配置生成模型后发布）。冒烟脚本：`src/smoke_mcp.py --url http://127.0.0.1:8000/mcp [--token <token>]`。
+- 入口脚本发现无索引快照时先入库再启动（需联网下载嵌入模型，建议挂载既有索引/缓存卷）；镜像约 7 GB（含 torch/CUDA 运行库）
+- `DEMO_API_TOKEN` 设置后 HTTP 与 MCP 统一要求 `Authorization: Bearer <token>`（无/错凭据 401）；不设置则本地免鉴权
 
-## 评测
+## MCP Integration
 
-以下评测在内置示例语料（中文 RAG 教程集 + 受治理版本 fixture）上测得；更换语料需重建索引并重跑全部评测。golden set 位于 [`eval/golden_set.jsonl`](eval/golden_set.jsonl)，覆盖：
+MCP 端点（Streamable HTTP）：`http://127.0.0.1:8000/mcp`，与 HTTP 共用 Bearer 鉴权。
 
-```text
-exact_term · concept_contrast · multi_hop
-version_conflict · ambiguous_followup · unanswerable
+| 工具 | 用途 |
+|---|---|
+| `search_knowledge` | 结构化证据检索，返回带 span/版本/score 的命中 |
+| `get_context` | 按 `evidence_id` 回查有界原文窗口（含 `content_hash`） |
+| `ask_knowledge` | 单次问答委托（配置生成模型后发布） |
+
+```json
+{
+  "mcpServers": {
+    "agent-kb": {
+      "url": "http://127.0.0.1:8000/mcp",
+      "headers": { "Authorization": "Bearer ${DEMO_API_TOKEN}" }
+    }
+  }
+}
 ```
 
-完成入库并配置 judge model 后运行：
+实测（Pi 0.85.1 + pi-mcp-adapter 2.32.1 ↔ 服务端 MCP SDK 2.1.1）：工具发现 → Bearer 鉴权 → search 命中 → get_context 回查 → **Pi 用自己的模型基于证据作答并引用 source**，五步全绿；`ask_knowledge` decision=answered。工具的文本通道与 structuredContent 同载荷，只渲染文本的 MCP 客户端也能拿到完整结构化结果。冒烟脚本：`python src/smoke_mcp.py --url http://127.0.0.1:8000/mcp [--token <token>]`。
 
-```bash
-cd eval
-env -u ALL_PROXY -u all_proxy ../.venv/bin/python run_eval.py --mode agentic  # 或 --mode rag
-```
+## Evaluation
 
-检索挑战集（40 题，不调用生成模型）：
+以下评测在内置示例语料（中文 RAG 教程集 + 受治理版本 fixture）上测得；更换语料需重建索引并重跑全部评测。
 
-```bash
-cd eval
-env -u ALL_PROXY -u all_proxy ../.venv/bin/python run_challenge.py
-```
-
-### 已记录基线
-
-**当前基准是 2026-09-10 单次 decision 协议基线（最终 commit 重跑；rag/agentic 同 index/模型/参数，README 表由 make_readme_table.py 从本场 summary 生成）**：完整报告见 [`eval/reports/baseline-2026-09-10-agentic.md`](eval/reports/baseline-2026-09-10-agentic.md) 与 [`baseline-2026-09-10-rag.md`](eval/reports/baseline-2026-09-10-rag.md)，per-item 数据与汇总见同名 `.jsonl` / `.summary.json`。检索指标统计进入检索流程的 20 题，5 条歧义题由 clarification 指标单独评估。
+**当前基准：2026-09-10 单次 decision 协议基线**（rag/agentic 同 index/模型/参数同场运行；本表由脚本从同场 summary 生成）。完整报告：[agentic](eval/reports/baseline-2026-09-10-agentic.md)、[rag](eval/reports/baseline-2026-09-10-rag.md)、[对照报告](eval/reports/comparison-2026-09-10.md)（含 badcase 审计）。检索指标统计进入检索流程的 20 题，5 条歧义题由 clarification 指标单独评估。
 
 | 指标（单次 decision 协议） | 2026-09-10 agentic | 2026-09-10 rag |
 |---|---:|---:|
@@ -291,115 +131,111 @@ env -u ALL_PROXY -u all_proxy ../.venv/bin/python run_challenge.py
 | Latency P50 / P95 | 13.99s / 22.25s | 1.84s / 3.74s |
 | 平均 cost（¥/query） | 0.0082 | 0.0009 |
 
-两种模式的已知差异（最终 commit 同场对照，不预设结论）：rag 单图无改写/拆解，单次检索的 top-k 证据直接约束回答——明确可答题误拒 0.1（2/20，证据片段不足以支撑完整回答），歧义题不会澄清（clarification 0.000）且 2/5 被硬拒（计入 refusal FP，故其拒答 precision 0.556）；agentic 拆解/多轮工具后拒答精度 1.000（含 rewrite JSON 解析失败重试），歧义题澄清 1/5。代价：agentic 延迟与成本显著更高（P50 13.99s vs 1.84s，约 7.6×；成本约 9×），检索指标两者持平（Recall@5 均 1.000），context precision 双图更低（0.624 vs 0.815）——多路证据摊薄了上下文精度，但 context recall 更高（0.917 vs 0.722）。
+两种模式的已知差异（同场对照，不预设结论）：rag 单图无改写/拆解，单次检索的 top-k 证据直接约束回答——明确可答题误拒 0.1（2/20，证据片段不足以支撑完整回答），歧义题不会澄清且 2/5 被硬拒（计入 refusal FP，故拒答 precision 0.556）；agentic 拆解/多轮工具后拒答精度 1.000，歧义题澄清 1/5。代价：agentic 延迟与成本显著更高（P50 13.99s vs 1.84s，约 7.6×；成本约 9×），检索指标两者持平（Recall@5 均 1.000），context precision 双图更低（0.624 vs 0.815）——多路证据摊薄了上下文精度，但 context recall 更高（0.917 vs 0.722）。
 
-**历史基准（旧 HITL 协议，不回写、不直接同比）**：
+**检索挑战集**（40 题直接检索）：回归锚点 Recall@5=1.000 与冻结基线持平；全量 Recall@5=0.950、MRR=0.933、2 题 hard-negative 泄漏（其一为"当前有效"问题命中过期版本）。Recall 1.000 只代表这套固定语料与 golden set，不是对开放问题的泛化承诺。
 
-| 指标 | 2026-09-01 | 2026-08-28 |
-|---|---:|---:|
-| Recall@5 / Recall@7 | 1.000 / 1.000 | 1.000 / 1.000 |
-| MRR | 0.975 | 0.975 |
-| Faithfulness | 0.895 | 0.943 |
-| Answer relevancy | 0.909 | 0.882 |
-| Context precision / recall | 0.679 / 0.908 | 0.761 / 1.000 |
-| Refusal recall / legacy specificity（历史非误拒率） | 1.000 / 0.840 | 1.000 / 0.880 |
-| Clarification rate（HITL 暂停口径） | 0.800 | 0.600 |
-| Latency P50 / P95 | 15.11s / 24.85s | 14.99s / 27.03s |
+**规模与并发**：100 文档 / 12,098 块合成快照，3 并发 126/126 有效查询，0 错误 0 busy；P50/P95 与峰值资源见[规模实测报告](eval/reports/scale-2026-09-10.md)。
 
-完整历史报告：[2026-09-01](eval/reports/baseline-2026-09-01.md)、[2026-08-28](eval/reports/baseline-2026-08-28.md)、[2026-08-23](eval/reports/baseline-all-in-rag-2026-08-23.md)（初版冻结）。
-
-**历史指标口径提醒**：旧 runner/报告中的 `refusal.precision` 实际计算 `1 - false_refusals / answerable_n`，不是标准拒答 precision；新 decision 协议使用标准 TP/(TP+FP)，二者不能直接比较。旧 HITL 的澄清暂停率与新单次澄清率也是不同语义，并列报告不直接同比。
-
-检索挑战集（40 题直接检索）回归锚点 Recall@5=1.000 与冻结基线持平（见 [`eval/reports/challenge-2026-09-10.md`](eval/reports/challenge-2026-09-10.md)），全量指标 Recall@5=0.950、MRR=0.933、2 题 hard-negative 泄漏与 2026-09-09 场持平。Recall 1.000 只代表这套固定语料与 golden set，不是对开放问题的泛化承诺。
-
-### 评测纪律
-
-只有这几条是硬的，其余数字是记录、不是门禁：
-
-1. 质量集完整执行，0 ERROR / 0 SKIP；错误与跳过保留在分母
-2. 每份报告绑定 commit / index_id / 模型 / 参数；发布证据必须出自最终 commit
-3. 饱和数字如实标注口径：Recall 1.000 只是这套固定示例语料 golden set 的结果，不是通用上限
-4. 负结果有效：不预设双图更好；不改题、不删 badcase、不挑最好一次
-5. 历史口径不冒充新口径：legacy 非误拒率 ≠ refusal precision，HITL 暂停率 ≠ 单次澄清率，并列不同比
-6. 改检索 / Agent / 语料才重跑全量 eval；纯文档改动不跑付费评测
-
-## 测试
+运行评测：
 
 ```bash
-python -m pytest tests/
+cd eval
+env -u ALL_PROXY -u all_proxy ../.venv/bin/python run_eval.py --mode agentic   # 或 --mode rag
+env -u ALL_PROXY -u all_proxy ../.venv/bin/python run_challenge.py            # 检索挑战集（不调生成模型）
 ```
 
-CI（`.github/workflows/ci.yml`）在 push/PR 时执行 compile 检查 + 全量 pytest，作为进入 main 的语法与回归门禁。本地等价命令：
+## Architecture
 
-```bash
-python -m compileall -q rag_agent core api db schema client document_chunker.py config.py utils.py  # 在 src/ 下
-python -m pytest tests/ -q
+```text
+L4  Gradio UI
+        |
+        v
+    AgentClient (HTTP / SSE)
+        |
+L3  FastAPI  /health /info /search /evidence /invoke /stream · /mcp
+        |
+L2  AppService  search/read_evidence + AnswerService  rag/agentic 单次问答
+        |
+L1  LangGraph  rag 单图 · agentic 主图 + 检索子图
+        |
+L0  Qdrant hybrid retrieval + parent store + corpus
 ```
 
-当前测试覆盖：
+依赖方向保持单向：UI 只依赖 client；API 层只通过 L2 公共接口使用检索与问答，不 import `db/` / `rag_agent/` 内部；检索与 Agent 内部可以继续演进而不改变 HTTP 协议。
 
-- Pydantic 请求/响应/SSE schemas（含 `thread_id` 拒绝与 mode 校验）
-- FastAPI readiness、search/evidence 契约、invoke/stream decision 协议与终态
-- 固定 RAG 单图与单次化双图的编译、三种 decision、引用修复与错误路径
-- 引用机械校验：伪造 evidence_id、quote 非原文子串、span 推导与精确回查
-- 跨请求状态隔离（无 checkpointer、无会话历史）
-- 检索路径（search→compress→collect）与 chunker metadata/chunk_id/span
-- 受治理 fixture 的静态契约（active/expired 配对语义）
-- 真实本地索引集成测试：`skipif` 本地未入库，验证 metadata 全链路传播与 `parent.content[span_start:span_end] == hit.content` 精确反查（fresh clone 自动跳过）
+关键设计决策：
 
-除最后两类外，测试通过 stub 隔离真实 LLM 与 Qdrant，属于服务契约和 graph composition 测试，不等同于端到端评测；真实模型行为由 `eval/` 单独记录。
-
-## 仓库结构
+- **单次 decision 协议**：三种 decision 皆为终态，单次请求语义贯穿 HTTP / SSE / MCP，服务无会话状态
+- **引用机械校验**（`rag_agent/validation.py`）：evidence_id 必属本次实际取得的证据集合，quote 必须是证据原文精确子串，span 由 quote 位置推导并绑定快照；失败在预算内修复一次，仍失败返回 `result_validation_failed`，不伪造引用、不冒充正常拒答
+- **类型化 `RetrievalHit` 契约**（`db/retrieval.py`）：命中作为对象流经 AgentState → events → eval，全程无字符串解析；`Retriever` Protocol 由 `QdrantRetriever`（prod）与 `InMemoryRetriever`（test）两个适配器坐实
+- **manifest 语料治理**：每篇文档登记 `source_url` / `sha256` / `license` / `topic` / 版本，同步采用镜像语义清理清单外残留
 
 ```text
 src/
-  api/             FastAPI routes、SSE 序列化、MCP 工具与鉴权
-  client/          HTTP/SSE client
+  api/             FastAPI 路由、SSE 序列化、MCP 工具与鉴权
+  client/          HTTP/SSE 客户端
   core/            AppService composition、检索/问答服务、预算与 usage
   db/              Qdrant、parent store、快照与证据存储
   rag_agent/       rag 单图、agentic 双图、节点、引用校验
   schema/          HTTP/MCP 共用 DTO 与 SSE event schemas
-  ui/              Gradio presentation
-
+  ui/              Gradio 薄客户端
 data/              受治理示例语料、manifest 与版本 fixture
 eval/              golden set、挑战集、metrics、runner 和 reports
-tests/             API/schema/graph/validation tests
+tests/             API/schema/graph/validation 测试
 docs/              架构：分层依赖规则与领域词汇（ARCHITECTURE.md）
 ```
 
-## 当前边界与路线图
+分层规则与领域词汇详见 [ARCHITECTURE](docs/ARCHITECTURE.md)。
 
-### 发布清单（2026-09-10，逐项实测）
+测试：`python -m pytest tests/`（CI 实测 93 passed / 4 skipped；stub 隔离真实 LLM 与 Qdrant，覆盖 schemas、decision 协议、引用校验、跨请求状态隔离、检索路径与 chunker span、fixture 静态契约；4 项真实索引集成测试仅在本地已入库时运行，fresh clone 自动跳过）。CI 在 push/PR 时执行 compile 检查 + 全量 pytest。
 
-**第一步·对照实验定稿**（完整证据见 [对照报告](eval/reports/comparison-2026-09-10.md)）：
+## API
 
-| 项 | 状态 |
-|---|---|
-| 评测口径审计：runner misrefusal/overclarify 分母对齐冻结契约（明确可答 n=20）、README 基线表改脚本同场生成、acceptance.yaml threshold 0.2→0.4 勘误（冻结当日笔误） | 通过 |
-| 最终 commit 重跑 rag/agentic 双基线（同 index/模型/参数，30/30、0 ERROR 0 SKIP） | 通过 |
-| 40 题挑战集复跑（回归锚点 Recall@5=1.000 与冻结基线持平） | 通过 |
-| badcase 审计（rag 4 例误拒逐条归因、歧义题澄清合理性、挑战集 2 例泄漏） | 通过（写入对照报告） |
-| 规模与并发实测（100 文档/12,098 块合成快照，3 并发 126/126 有效，0 错误 0 busy） | 通过 |
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| `GET` | `/health` | 检索 readiness（不依赖 LLM） |
+| `GET` | `/info` | 快照 index_id、模型标识、可用 modes |
+| `POST` | `/search` | 结构化证据检索（无生成模型调用） |
+| `GET` | `/evidence/{evidence_id}` | 按 ID 回查有界原文窗口 |
+| `POST` | `/invoke` | 单次问答（`mode`=rag/agentic，默认 rag） |
+| `POST` | `/stream` | 同一问答契约的 SSE 进度与结果 |
 
-**第二步·发布**：
+问答结果统一为单次 decision 协议：
 
-| 项 | 状态 |
-|---|---|
-| Docker 镜像构建（约 7 GB，含 torch/CUDA 运行库；slim 化未执行） | 通过 |
-| 容器启动 → health ready（挂载既有索引） | 通过 |
-| HTTP smoke（/search） | 通过 |
-| MCP smoke：工具发现、search/get_context 回查、content_hash 客户端复算（src/smoke_mcp.py） | 通过 |
-| Bearer 鉴权（HTTP 与 MCP：无/错凭据 401、正确凭据 200） | 通过 |
-| 容器内自入库（空卷冷启动：经代理下载嵌入模型 → 入库 46/354 → 快照 → health ready → MCP smoke PASS） | 通过 |
-| fresh clone 空数据复现（宿主机：clone→依赖→入库 46/354 与质量索引一致→启动→HTTP+MCP smoke） | 通过（检索侧；生成模型未配置路径） |
-| ask_knowledge 冒烟（MCP 问答委托） | 通过：decision=answered、citations=3、usage 1175/948 tok，经 MCP 结构化输出返回 |
-| Pi 实测端到端（工具发现、Bearer、search/get_context、答案消费） | 通过（修复后复测）：pi 0.85.1 + pi-mcp-adapter 2.32.1 ↔ 服务端 mcp SDK 2.1.1，五步全绿——工具发现、Bearer 全程鉴权、search 命中、get_context 回查、**Pi 用自己的模型基于证据作答并引用 source**、ask_knowledge decision=answered。首轮实测发现 pi-mcp-adapter 只把 TextContent 渲染进模型上下文，摘要式文本导致接地断裂；已修：MCP 工具文本通道与 structuredContent 同载荷（双通道等价，见 `src/api/mcp_app.py`），97 项测试通过后 Pi 复测全绿 |
+```text
+request_id · index_id · mode
+decision = answered | clarification_required | refused
+answer · clarification_question? · limitations[]
+citations[] = citation_id + evidence_id + source + chunk_id + span + quote
+usage = input/output tokens + estimated cost + model calls
+```
 
-### 尚未作为已完成能力声明
+`/stream` 使用结构化 SSE 事件（`status · tool_call · tool_result · done · error`）；`done` 携带**校验后**的完整结果——答案不实时流式输出未校验文本，异常恰好一个 `error`。
 
-- 中文分词 BM25、自定义 RRF、reranker、按版本/有效期过滤（已有元数据不等于已执行过滤；ch029 是版本过滤的现成靶子）
-- 每 Agent 身份、公私分区、协作编辑、异步入库和文档历史生命周期（已顺延）
-- 限流、TLS、生产级部署；新产品以单次请求为语义，不再提供跨请求会话
+## Sample Corpus
+
+仓库内置一份受治理的示例语料，用于演示与评测：从 [`mothieras/all-in-rag`](https://github.com/mothieras/all-in-rag) 固定修订版选取的 14 篇中文 RAG 教程（七类 topic），加上项目自有的两对虚构政策文档 fixture（各含一个已过期与一个当前有效版本，入库进同一 collection，用于验证版本元数据全链路传播并为版本冲突评测提供素材）。服务本身语料无关——入库与证据链路由 [`data/manifest.json`](data/manifest.json) 驱动，可整体替换为其他语料并重跑评测。治理规则与目录说明见 [`data/README.md`](data/README.md)。
+
+## Background & Attribution
+
+本项目脱胎于开源 LangGraph 教学项目 [agentic-rag-for-dummies](https://github.com/GiovanniPasq/agentic-rag-for-dummies)，不把"重写框架"当目标，而是模拟更常见的工程任务：接手一个可运行的开源底座，把它改造成能够测量、能够通过 API 集成的知识库服务。如今两者已是两套系统：底座是 40 文件的教学 demo，本仓库是 157 文件的服务——132 个文件为本项目新增，约 20 个沿上游模块演进的文件集中在 LangGraph 双图骨架与检索基础设施（逐项对照见下表）。
+
+| 领域 | 上游底座 | 本项目的增量 |
+|---|---|---|
+| Agent 编排 | LangGraph 主图/子图、查询改写、HITL 澄清、并行子问题、上下文压缩 | DeepSeek JSON mode 适配；单次化：固定 RAG 单图 + 双图单次 decision 协议、共享请求预算、引用机械校验与一次修复 |
+| 检索 | 父子分块、Qdrant dense + sparse hybrid retrieval、文件型 parent store | 示例中文 RAG 语料、固定 revision 与哈希校验、来源 metadata、检索 recorder 与分维度评测 |
+| 应用入口 | Gradio 教学应用 | FastAPI `/search` `/evidence` `/invoke` `/stream`、MCP 只读+问答工具、独立 HTTP/SSE client；Gradio 改为薄客户端 |
+| 评测 | — | 30 条领域 golden set、40 题检索挑战集、自动评测 runner、基线报告与 badcase 信号 |
+| 可运行性 | 本地教学项目 | 环境变量驱动的 DeepSeek 配置、生成模型可选的检索服务、smoke script、API/schema/graph 测试 |
+
+- **原作者**：[Giovanni Pasqualino](https://github.com/GiovanniPasq)
+- **上游许可**：MIT；原始版权声明保留在 [`LICENSE`](LICENSE)
+- **示例语料**：来自 [`mothieras/all-in-rag`](https://github.com/mothieras/all-in-rag) 固定修订版，遵循 CC BY-NC-SA 4.0，不适用本仓库代码的 MIT License；详见 [`data/THIRD_PARTY_NOTICES.md`](data/THIRD_PARTY_NOTICES.md)
+
+### Non-goals
+
+内置 Web/Chrome 工具、自动记忆学习、跨请求聊天历史或 HITL 恢复、管理后台、OCR 均不在本服务范围；它不是聊天机器人产品，而是 Agent 的知识层。
 
 ## License
 
