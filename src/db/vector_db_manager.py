@@ -1,8 +1,25 @@
+import threading
+
 import config
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore, FastEmbedSparse, RetrievalMode
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
+
+_mps_embed_lock = threading.Lock()
+
+
+class _SerializedEmbeddings(HuggingFaceEmbeddings):
+    """并发 encode 在 MPS 上会 OOM 崩溃或死锁（ToolNode 并行 tool call、服务端并发槽位都会触发），进程内串行化；async 变体经基类委托到同步方法，同锁覆盖。"""
+
+    def embed_query(self, text: str) -> list[float]:
+        with _mps_embed_lock:
+            return super().embed_query(text)
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        with _mps_embed_lock:
+            return super().embed_documents(texts)
+
 
 class VectorDbManager:
     __client: QdrantClient
@@ -10,7 +27,7 @@ class VectorDbManager:
     __sparse_embeddings: FastEmbedSparse
     def __init__(self):
         self.__client = QdrantClient(path=config.QDRANT_DB_PATH)
-        self.__dense_embeddings = HuggingFaceEmbeddings(model_name=config.DENSE_MODEL)
+        self.__dense_embeddings = _SerializedEmbeddings(model_name=config.DENSE_MODEL)
         self.__sparse_embeddings = FastEmbedSparse(model_name=config.SPARSE_MODEL)
 
     @property
