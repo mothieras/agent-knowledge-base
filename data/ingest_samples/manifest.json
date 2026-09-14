@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "origin": "project-owned",
+  "license": "MIT",
+  "description": "入库管道样例集（PHASE1 §3 冻结的 S1–S10，S6 无文本层 PDF 随 T2 补入）：正样例验证规范化/分块的结构保留与可复现性，负样例固定失败终态目标。锚点（anchors）在断言侧做空白归一化匹配——PDF 提取文本的折行与缩进剥离不影响子串判定。本清单不进主 manifest、不参与 data/sync_sources.py 同步清理。",
+  "pdf_generation": {
+    "script": "generate_pdf_samples.py",
+    "library": "pymupdf 1.28.0",
+    "note": "生成一次即登记 SHA；脚本仅作来源记录，重跑需 --force 并重新登记"
+  },
+  "documents": [
+    {
+      "sample": "S1",
+      "file": "s1_structure.md",
+      "expected": "ok",
+      "purpose": "结构保留正样例：H1–H3 多级标题、围栏代码块、表格、有序/无序列表、中英混排",
+      "anchors": [
+        "混合结构样例 S1：标题、代码、表格与列表",
+        "hybrid search combines dense vectors with sparse lexical signals",
+        "候选召回：dense embedding 与 BM25 双通道",
+        "文档规范化（normalization）",
+        "def rrf_fusion(dense_hits, sparse_hits, k=60):",
+        "return sorted(scores.items(), key=lambda kv: -kv[1])",
+        "Qdrant/bm25",
+        "数值稳定细节",
+        "chunk boundaries shall respect paragraph separators"
+      ],
+      "sha256": "3523add15ccc5561a522fcc42ec2d22f46e64a685408ce7e08eff3d34c1ede3b"
+    },
+    {
+      "sample": "S2",
+      "file": "s2_plain_text.txt",
+      "expected": "ok",
+      "purpose": "无标题纯文本正样例：UTF-8 长段落，验证按尺寸分块路径（>4000 字符触发大块拆分）",
+      "anchors": [
+        "无标题纯文本正样例",
+        "plain text ingestion must preserve every registered sentence anchor verbatim",
+        "Encoding behavior is part of the ingestion contract, not an implementation detail",
+        "Reproducibility is asserted by hashing two independent chunking runs",
+        "size-based chunking must keep every paragraph separator as the preferred split point"
+      ],
+      "sha256": "70c9360f743dea0b7a03964675d0c9790ad1893d32760e21c5a7cb5c5589b8b1"
+    },
+    {
+      "sample": "S3",
+      "file": "s3_pdf_text_layer.pdf",
+      "expected": "ok",
+      "purpose": "文本层 PDF 正样例：标题层级/代码块/表格经 pymupdf4llm 规范化后锚点保留",
+      "anchors": [
+        "S3 Sample: Structure Preservation",
+        "Section One - Retrieval Pipeline Overview",
+        "dense and sparse channels are fused by reciprocal rank fusion before threshold filtering",
+        "Fusion and Threshold Details",
+        "def rrf_fusion(dense_hits, sparse_hits, k=60):",
+        "scores[hit.id] = scores.get(hit.id, 0.0) + 1.0 / (k + rank + 1)",
+        "Section Two - Channel Configuration",
+        "Qwen3-Embedding-0.6B",
+        "Qdrant/bm25 lexical",
+        "RRF k=60 fixed",
+        "Closing body paragraph of S3"
+      ],
+      "sha256": "62a5c11d452aefa6ff91e88ecee20733db3689ce3a03f4f4f1fe75fa58bf3237"
+    },
+    {
+      "sample": "S4",
+      "file": "s4_pdf_multipage.pdf",
+      "expected": "ok",
+      "purpose": "多页 PDF 正样例：跨页段落与跨页表格；页码定位行为由 T4 处置",
+      "anchors": [
+        "S4 Sample: Multi-Page Continuity",
+        "Continuous Narrative Section",
+        "Cross-page continuity is a normalization risk",
+        "S4-PAGE-TAIL-ANCHOR",
+        "Cross-Page Table Section",
+        "recall_at_5",
+        "anchor questions hit in top 5",
+        "leak_count",
+        "unanswerable questions answered",
+        "multi-page preservation contract of this sample"
+      ],
+      "sha256": "a2f9aa029f90a949c94a2472b178416d5260cffcfc83c70eedb513b73a5f375a"
+    },
+    {
+      "sample": "S5a",
+      "file": "s5a_empty.md",
+      "expected": "failed:empty_text",
+      "purpose": "空文件负样例（0 字节 .md）",
+      "anchors": [],
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "sample": "S5b",
+      "file": "s5b_whitespace.txt",
+      "expected": "failed:empty_text",
+      "purpose": "仅空白负样例（空格/制表/换行 .txt，strip 后为空）",
+      "anchors": [],
+      "sha256": "6f98cc02e70fe538650aedd805b69d9870cebf20a70ad59f7a52bcad4c778d37"
+    },
+    {
+      "sample": "S7",
+      "file": "s7_duplicate.md",
+      "expected": "ok；同文件二次提交=failed:duplicate",
+      "purpose": "重复提交场景载体：harness 分两次提交同一文件，第二次目标终态 failed:duplicate",
+      "anchors": [
+        "重复提交样例 S7",
+        "Duplicate submission must be reported explicitly"
+      ],
+      "sha256": "6edde87e43b2dcb43bea0c3ab03c1f34e49635a068c08b154d1c05f1be73544b"
+    },
+    {
+      "sample": "S8a-1",
+      "file": "s8a_with_source/first.md",
+      "expected": "ok；同批第二份=显式冲突",
+      "purpose": "同名冲突情形一（同 source 标识）第一份：内容指纹 FIRST-FILE-CONTENT-A",
+      "anchors": [
+        "FIRST-FILE-CONTENT-A"
+      ],
+      "sha256": "1e98f490f57ea2bd3d53820b3458d2bb49d84f3a99591a47ddf220f54b176f9c"
+    },
+    {
+      "sample": "S8a-2",
+      "file": "s8a_with_source/second.md",
+      "expected": "failed:conflict",
+      "purpose": "同名冲突情形一第二份：与 first.md 同 source 标识不同内容，指纹 SECOND-FILE-CONTENT-B",
+      "anchors": [
+        "SECOND-FILE-CONTENT-B"
+      ],
+      "sha256": "5974189f9d36355c469516743a2468be8f422a84d0378b5277aab9765b894604"
+    },
+    {
+      "sample": "S8b-1",
+      "file": "s8b_no_source/left/shared_note.md",
+      "expected": "ok；同批第二份=显式冲突",
+      "purpose": "同名冲突情形二（无 source 同 stem）左份：指纹 LEFT-NOTE-CONTENT-L",
+      "anchors": [
+        "LEFT-NOTE-CONTENT-L"
+      ],
+      "sha256": "6def9fb3fc6b08a794020bc6e0d9840e8d8cb5e9e48c8ab781ec05969313c866"
+    },
+    {
+      "sample": "S8b-2",
+      "file": "s8b_no_source/right/shared_note.md",
+      "expected": "failed:conflict",
+      "purpose": "同名冲突情形二右份：与 left/shared_note.md 同 stem 不同内容，指纹 RIGHT-NOTE-CONTENT-R",
+      "anchors": [
+        "RIGHT-NOTE-CONTENT-R"
+      ],
+      "sha256": "dd355d04c16deae57a07830f0bfe663b6aa7db29d13f5c6bdaff74e5aa83b15a"
+    },
+    {
+      "sample": "S9",
+      "file": "s9_unsupported.docx",
+      "expected": "failed:unsupported_format",
+      "purpose": "不支持格式负样例：后缀过滤先于解析，占位内容即可",
+      "anchors": [],
+      "sha256": "c83fab89e67a150a4be1e621f8f6799dd28ea3fa7e5408a031ddeaae1b53740b"
+    },
+    {
+      "sample": "S10",
+      "file": "s10_gbk.txt",
+      "expected": "failed:unsupported_encoding",
+      "purpose": "非 UTF-8 编码负样例：合法 GBK 文本，读入路径目标显式失败",
+      "anchors": [],
+      "sha256": "b006a094882290fafeecb9a5f46e3338f733faacd212e20c4ade8d2d3703bba4"
+    }
+  ]
+}

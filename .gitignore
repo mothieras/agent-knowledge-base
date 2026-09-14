@@ -9,6 +9,7 @@ qdrant_db/
 markdown_docs/
 parent_store/
 eval/scale_artifacts/
+eval/ingest_artifacts/
 .superpowers/
 .commandcode/
 AGENTS.md

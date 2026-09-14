@@ -1,0 +1,2 @@
+占位文件：S9 用于验证不支持后缀在解析前被显式拒绝（目标终态 unsupported_format）。
+Placeholder for S9: unsupported suffix must be rejected explicitly before parsing.

@@ -25,6 +25,7 @@ data/
   interview_docs/  实际入库语料（Markdown，保持来源目录结构）
   manifest.json    来源、许可、版本、topic 与完整性清单
   fixtures/        项目自有的受治理版本冲突 fixture（见下）
+  ingest_samples/  项目自有的入库管道样例集（见下）
 ```
 
 ## 受治理 fixture
@@ -34,6 +35,14 @@ data/
 - 由 [`fixtures/manifest.json`](fixtures/manifest.json) 独立治理，不参与 `sync_sources.py` 的第三方 SHA 同步与清理。
 - 入库时与第三方语料进同一 collection（`ingest_corpus.py` 自动合并）。
 - 静态契约由 `tests/test_fixtures.py` 守护：每个 topic 恰一 expired 一 active、active 优先级更高且生效日期接续 expired 失效日期。
+
+## 入库管道样例集
+
+[`ingest_samples/`](ingest_samples/) 是项目自有（MIT）的入库管道样例集（PHASE1 冻结的 S1–S10）：正样例验证规范化与父子分块的结构保留、span 精确性与可复现性，负样例固定各类失败终态的目标行为（空文本、重复提交、同名冲突、不支持格式、非 UTF-8 编码）。
+
+- 由 [`ingest_samples/manifest.json`](ingest_samples/manifest.json) 独立治理：逐文件登记用途、预登记结构锚点与 SHA-256；不进主 manifest、不参与 `sync_sources.py` 的同步与清理。
+- 两级验证：Level A（`tests/test_ingest_samples_level_a.py`，无模型无索引，进 CI）直调分块与规范化；Level B（`eval/ingest_samples/run_level_b.py`，本地手动跑）经 scratch 索引端到端入库，不触碰质量索引。
+- PDF 样例（S3/S4）由 `ingest_samples/generate_pdf_samples.py` 用 pymupdf 生成一次并登记 SHA，脚本仅作来源记录。
 
 ## 同步
 
