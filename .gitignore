@@ -14,6 +14,7 @@ eval/scale_artifacts/
 AGENTS.md
 PLAN.md
 docs/PHASE1.md
+docs/PHASE1-IMPL.md
 
 ragas_*.csv
 rag_evaluation_*.csv
