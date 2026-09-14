@@ -156,9 +156,11 @@ def main() -> int:
     chunker = DocumentChunker()
     dm = DocumentManager(chunker, parent_store, vector_db, config.CHILD_COLLECTION)
     dm.clear_all()
-    added, skipped = dm.add_documents(paths, source_names=source_names, doc_meta=doc_meta)
-    if added != len(paths) or skipped:
-        print(f"错误: 入库不完整 added={added} skipped={skipped}", file=sys.stderr)
+    results = dm.add_documents(paths, source_names=source_names, doc_meta=doc_meta)
+    added = sum(1 for r in results if r["status"] == "ok")
+    failures = [(r["source"], r["status"]) for r in results if r["status"] != "ok"]
+    if added != len(paths) or failures:
+        print(f"错误: 入库不完整 added={added} failures={failures}", file=sys.stderr)
         return 1
     print(f"[ingest] added={added} 耗时 {time.time() - t_ingest:.1f}s")
 

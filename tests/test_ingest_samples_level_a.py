@@ -4,8 +4,9 @@
 每个 child 是其 parent 的精确 span 切片；source/doc_meta 元数据传播；
 两次独立分块的内容散列一致。PDF 转换写 tmp，不触碰仓库 markdown_docs。
 
-负样（S5/S9/S10）只固定当前实际行为，不断言目标终态——
-目标终态断言是 T3 以本文件行为表为"前"的红测试。
+负样（S5/S6/S10）固定当前实际行为（T3 后仍是现状：chunker 层返回空、
+转换产物只剩页界标记、GBK 读取抛裸异常）；S9 的目标终态断言
+（unsupported_format）已由 tests/test_ingest_outcomes.py 落地，原现状测试随之移除。
 """
 import hashlib
 import io
@@ -167,34 +168,9 @@ def test_s5_current_behavior_empty_and_whitespace(tmp_path):
     assert _chunk_md(ws_md, "samples/s5b_whitespace.txt") == ([], [])
 
 
-def test_s9_current_behavior_suffix_silently_dropped():
-    """现状记录：不支持后缀在解析前被过滤，返回 (0,0)，
-    无任何输出或记录——S9 的目标终态 unsupported_format 是 T3 的改造对象。"""
-
-    class _Recording:
-        def __init__(self):
-            self.calls = 0
-
-        def create_chunks_single(self, *a, **kw):
-            self.calls += 1
-            return [], []
-
-    chunker = _Recording()
-    store = type("S", (), {"save_many": staticmethod(lambda *a: None),
-                           "delete_many": staticmethod(lambda *a: None)})()
-    vdb = type("V", (), {"get_collection": staticmethod(lambda *a: pytest.fail("不应触达索引"))})()
-
-    from core.document_manager import DocumentManager
-    dm = DocumentManager(chunker, store, vdb, "unused")
-    added, skipped = dm.add_documents([str(SAMPLES_DIR / "s9_unsupported.docx")])
-
-    assert (added, skipped) == (0, 0)
-    assert chunker.calls == 0
-
-
 def test_s6_current_behavior_no_text_layer(tmp_path):
-    """现状记录（T2 双证据）：无文本层 PDF 的提取产物只剩页界标记，
-    document_manager 的空文本检查会被它骗过（假成功，见附录 A / Level B）。
+    """现状记录（T2 双证据）：无文本层 PDF 的提取产物只剩页界标记
+    （T3 后 document_manager 判定空文本时剥除该标记 → no_text_layer 终态）。
     无 OCR 行为证据：本机无 tesseract/pytesseract/rapidocr，pymupdf4llm
     select_ocr_function() 返回 None → OCRMode.NEVER，转换输出无 OCR 痕迹；
     注意默认 use_ocr 并非 NEVER——装入任一 OCR 依赖后图像页会自动启用 OCR。"""

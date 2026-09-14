@@ -1,8 +1,8 @@
 """T1 Level B：ingest 样例集的 scratch 索引端到端验证（本地手动跑，不进 CI）。
 
-样例逐个以独立 add_documents 调用提交，捕获每步的返回计数与 print 输出，
-输出逐样本显式终态表（ok / failed:<观察> / silent_drop）与批量计数一致性（门槛 1），
-并记录 S7/S8/S9 在 store 侧的实际行为（指纹/文件清单/source 列表）。
+样例逐个以独立 add_documents 调用提交，消费结构化终态记录，
+输出逐样本显式终态表（ok / failed:<类别>）并对照目标终态表（T3 后 PHASE1 §4 门槛 1/4），
+另记录 S7/S8 在 store 侧的实际行为（指纹/文件清单/source 列表）。
 
 与质量索引严格隔离：qdrant/parent_store 走 env 覆盖，markdown 输出目录
 （config 无 env 入口）在导入 config 后直接改写。重复运行前会 clear_all 重建。
@@ -11,11 +11,9 @@
 产出: eval/ingest_artifacts/{qdrant_db/, parent_store/, markdown_docs/, report.json}
 """
 import hashlib
-import io
 import json
 import os
 import sys
-from contextlib import redirect_stdout
 from pathlib import Path
 
 EVAL_DIR = Path(__file__).resolve().parent.parent
@@ -44,6 +42,18 @@ from core.document_manager import DocumentManager  # noqa: E402
 # 正样：当前实现就必须成功（失败 = harness 或管道破坏，硬失败）
 MUST_OK = {"S1", "S2", "S3", "S4", "S7#1", "S8a#1", "S8b#1"}
 
+# T3 后的目标终态（PHASE1 §4 门槛 1/4）：每个提交都有显式终态
+EXPECTED_STATES = {
+    "S1": "ok", "S2": "ok", "S3": "ok", "S4": "ok",
+    "S5a": "failed:empty_text", "S5b": "failed:empty_text",
+    "S6": "failed:no_text_layer",
+    "S7#1": "ok", "S7#2": "failed:duplicate",
+    "S8a#1": "ok", "S8a#2": "failed:conflict",
+    "S8b#1": "ok", "S8b#2": "failed:conflict",
+    "S9": "failed:unsupported_format",
+    "S10": "failed:unsupported_encoding",
+}
+
 # 冲突对指纹：断言胜者入库、败者无痕迹（静默跳过的 store 侧证据）
 FINGERPRINTS = {
     "S8a": ("FIRST-FILE-CONTENT-A", "SECOND-FILE-CONTENT-B"),
@@ -63,14 +73,11 @@ def run_plan():
     return [
         ("S1", [_p("s1_structure.md")], "samples/s1_structure.md"),
         ("S2", [_p("s2_plain_text.txt")], "samples/s2_plain_text.txt"),
-        # PDF 走无 source_names 提交：带标识时 slug 与转换器 stem 输出不一致，必然
-        # FileNotFoundError（行为表记录的管道缺陷，T3 处置）
-        ("S3", [_p("s3_pdf_text_layer.pdf")], None),
-        ("S4", [_p("s4_pdf_multipage.pdf")], None),
+        # PDF 带标识提交（缺陷① 已在 T3 修复：slug 与转换器 stem 输出归位一致）
+        ("S3", [_p("s3_pdf_text_layer.pdf")], "samples/s3_pdf_text_layer.pdf"),
+        ("S4", [_p("s4_pdf_multipage.pdf")], "samples/s4_pdf_multipage.pdf"),
         ("S5a", [_p("s5a_empty.md")], "samples/s5a_empty.md"),
-        # 无文本层 PDF（T2）：当前页界标记骗过空文本检查 -> 假成功入库；
-        # 目标 failed:no_text_layer 由 T3 落地后翻转此注释与下方源计数
-        ("S6", [_p("s6_no_text_layer.pdf")], None),
+        ("S6", [_p("s6_no_text_layer.pdf")], "samples/s6_no_text_layer.pdf"),
         ("S5b", [_p("s5b_whitespace.txt")], "samples/s5b_whitespace.txt"),
         ("S7#1", [_p("s7_duplicate.md")], "samples/s7_duplicate.md"),
         ("S7#2", [_p("s7_duplicate.md")], "samples/s7_duplicate.md"),
@@ -83,13 +90,8 @@ def run_plan():
     ]
 
 
-def classify(added, skipped, captured):
-    if added == 1:
-        return "ok"
-    if skipped == 1:
-        reason = " ".join(captured.split())[:120] or "skipped（无任何输出）"
-        return f"failed:{reason}"
-    return "silent_drop（后缀过滤剔除，added/skipped 均不计）"
+def classify(record):
+    return "ok" if record["status"] == "ok" else f"failed:{record['status']}"
 
 
 def main():
@@ -103,13 +105,13 @@ def main():
 
     steps = []
     for name, paths, source in run_plan():
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            added, skipped = dm.add_documents(paths, source_names={paths[0]: source} if source else None)
-        state = classify(added, skipped, buf.getvalue())
+        results = dm.add_documents(paths, source_names={paths[0]: source} if source else None)
+        assert len(results) == 1, f"{name}: 每次提交应有一条显式终态记录"
+        record = results[0]
+        state = classify(record)
         steps.append({
-            "step": name, "file": Path(paths[0]).name, "added": added, "skipped": skipped,
-            "state": state, "print": buf.getvalue().strip()[:400],
+            "step": name, "file": Path(paths[0]).name,
+            "state": state, "detail": record["detail"][:400],
         })
         print(f"  {name:<7} {Path(paths[0]).name:<28} -> {state}")
 
@@ -136,17 +138,16 @@ def main():
     checks = []
     checks.append(("正样全部 ok（当前实现的行为底线）",
                    all(s["state"] == "ok" for s in steps if s["step"] in MUST_OK)))
-    checks.append(("批量计数一致：sum(added)+sum(skipped) == 逐样本终态可计数行",
-                   sum(s["added"] for s in steps) + sum(s["skipped"] for s in steps) == len(steps) - 1))  # S9 两计数皆 0
-    checks.append(("store source 列表 == 正样来源集 + S6（当前假成功，T3 修正后改为 7 项）",
-                   len(sources) == len(MUST_OK) + 1 and "s6_no_text_layer.pdf" in sources))
+    checks.append(("逐样本终态 == 目标终态表（PHASE1 §4 门槛 1/4）",
+                   all(s["state"] == EXPECTED_STATES[s["step"]] for s in steps)))
+    checks.append(("store source 列表 == 正样来源集（7 项，S6 假成功已修正）",
+                   len(sources) == len(MUST_OK) and "s6_no_text_layer.pdf" not in sources))
     for pair, fp in fingerprints.items():
         checks.append((f"{pair} 冲突对：胜者入库、败者无痕迹",
                        fp["winner_present"] and not fp["loser_present"]))
 
     report = {
         "kind": "ingest_samples_level_b",
-        "note": "S6 当前假成功（页界标记骗过空文本检查），目标终态见 PHASE1-IMPL 附录 A",
         "steps": steps,
         "store": {
             "markdown_docs": md_files,

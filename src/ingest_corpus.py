@@ -90,7 +90,8 @@ def _parent_store_hash() -> tuple[int, str]:
 def _child_store_hash(client, collection: str) -> tuple[int, str]:
     """Qdrant payload（page_content + metadata chunk_id）的确定性摘要。
 
-    Point UUID 不入摘要；scroll 按 id 排序得到确定性顺序。
+    Point UUID 不入摘要（随机生成，db/snapshot.py 契约：同一输入和产物 → 同一
+    index_id）；按 chunk_id 排序得到确定性顺序。
     """
     points = []
     offset = None
@@ -106,6 +107,8 @@ def _child_store_hash(client, collection: str) -> tuple[int, str]:
     for p in points:
         h.update(str(p.id).encode("utf-8"))
         h.update(b"\x00")
+    h = hashlib.sha256()
+    for p in points:
         h.update(p.payload.get("page_content", "").encode("utf-8"))
         h.update(b"\x00")
         md = p.payload.get("metadata", {})
@@ -133,10 +136,19 @@ def main():
     dm = DocumentManager(chunker, parent_store, vector_db, config.CHILD_COLLECTION)
     print(f"[clear] 清空并重建 collection...")
     dm.clear_all()
-    added, skipped = dm.add_documents(paths, source_names=source_names, doc_meta=doc_meta)
-    print(f"[ingest] added={added} skipped={skipped} (第三方 {len(paths) - fixture_count} 篇 + fixture {fixture_count} 篇)")
-    if added != len(paths):
-        print("错误: 存在 skipped，入库不完整", file=sys.stderr)
+    results = dm.add_documents(paths, source_names=source_names, doc_meta=doc_meta)
+    added = sum(1 for r in results if r["status"] == "ok")
+    print(f"[ingest] added={added}/{len(paths)} (第三方 {len(paths) - fixture_count} 篇 + fixture {fixture_count} 篇)")
+    failures = [r for r in results if r["status"] != "ok"]
+    if failures:
+        by_status = {}
+        for r in failures:
+            by_status.setdefault(r["status"], []).append(r)
+        for status in sorted(by_status):
+            for r in by_status[status]:
+                print(f"  [{status}] {r['source']}: {r['detail']}", file=sys.stderr)
+        counts = ", ".join(f"{s}={len(rs)}" for s, rs in sorted(by_status.items()))
+        print(f"错误: 入库不完整 added={added}，{counts}", file=sys.stderr)
         return 1
 
     parent_count, parent_hash = _parent_store_hash()
