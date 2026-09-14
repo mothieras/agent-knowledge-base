@@ -157,6 +157,33 @@ S4_PADDING = (
 )
 
 
+def build_s6():
+    """无文本层 PDF：先把文本页栅格化，再把位图作为整页图像嵌入新页。
+    产物除图像外无任何文本对象——扫描件形态。"""
+    src = pymupdf.open()
+    page = _page(src)
+    y = MARGIN + F_BODY
+    for line in _wrap(
+        "S6 Sample: No Text Layer. This page exists only as a rasterized image; "
+        "extracting text from it must yield nothing, and the pipeline must fail "
+        "explicitly without invoking any OCR engine.", "helv", F_BODY,
+        PAGE_W - 2 * MARGIN,
+    ):
+        page.insert_text(pymupdf.Point(MARGIN, y), line, fontname="helv", fontsize=F_BODY)
+        y += F_BODY * 1.35
+    pix = page.get_pixmap(dpi=72)
+
+    doc = pymupdf.open()
+    dst = _page(doc)
+    dst.insert_image(pymupdf.Rect(MARGIN, MARGIN, PAGE_W - MARGIN, PAGE_H - MARGIN), pixmap=pix)
+    # 防御性自检：文本层必须为空
+    assert dst.get_text().strip() == ""
+    _set_meta(doc, "S6 ingest sample")
+    doc.save(OUT_DIR / "s6_no_text_layer.pdf")
+    doc.close()
+    src.close()
+
+
 def build_s4():
     doc = pymupdf.open()
 
@@ -210,10 +237,18 @@ def build_s4():
 
 
 if __name__ == "__main__":
-    if (S3_PATH.exists() or S4_PATH.exists()) and "--force" not in sys.argv:
+    import hashlib
+
+    targets = (S3_PATH, S4_PATH)
+    if "--s6" in sys.argv:
+        # 只补生成 S6（T2），不动已冻结的 S3/S4
+        build_s6()
+        p = OUT_DIR / "s6_no_text_layer.pdf"
+        print(f"{p.name}: sha256={hashlib.sha256(p.read_bytes()).hexdigest()} ({p.stat().st_size} bytes)")
+        sys.exit(0)
+    if any(p.exists() for p in targets) and "--force" not in sys.argv:
         sys.exit("S3/S4 已生成并登记 SHA；重跑需 --force 并重新登记 manifest")
     build_s3()
     build_s4()
-    import hashlib
-    for p in (S3_PATH, S4_PATH):
+    for p in targets:
         print(f"{p.name}: sha256={hashlib.sha256(p.read_bytes()).hexdigest()} ({p.stat().st_size} bytes)")

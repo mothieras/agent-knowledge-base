@@ -8,7 +8,9 @@
 目标终态断言是 T3 以本文件行为表为"前"的红测试。
 """
 import hashlib
+import io
 import json
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 import pytest
@@ -188,6 +190,29 @@ def test_s9_current_behavior_suffix_silently_dropped():
 
     assert (added, skipped) == (0, 0)
     assert chunker.calls == 0
+
+
+def test_s6_current_behavior_no_text_layer(tmp_path):
+    """现状记录（T2 双证据）：无文本层 PDF 的提取产物只剩页界标记，
+    document_manager 的空文本检查会被它骗过（假成功，见附录 A / Level B）。
+    无 OCR 行为证据：本机无 tesseract/pytesseract/rapidocr，pymupdf4llm
+    select_ocr_function() 返回 None → OCRMode.NEVER，转换输出无 OCR 痕迹；
+    注意默认 use_ocr 并非 NEVER——装入任一 OCR 依赖后图像页会自动启用 OCR。"""
+    import pymupdf
+
+    src = SAMPLES_DIR / "s6_no_text_layer.pdf"
+    with pymupdf.open(src) as doc:
+        assert all(p.get_text().strip() == "" for p in doc)  # 无文本层的直接证据
+
+    out, err = io.StringIO(), io.StringIO()
+    with redirect_stdout(out), redirect_stderr(err):
+        pdf_to_markdown(str(src), tmp_path)
+    product = (tmp_path / "s6_no_text_layer.md").read_text(encoding="utf-8")
+
+    # 除页界标记外无任何文本——且该标记正是骗过空文本检查的内容
+    stripped = product.replace("--- end of page.page_number=1 ---", "")
+    assert stripped.strip() == ""
+    assert "OCR" not in out.getvalue() and "OCR" not in err.getvalue()
 
 
 def test_s10_current_behavior_gbk_raises_unicode_error():

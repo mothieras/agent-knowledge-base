@@ -2,7 +2,7 @@
   "schema_version": 1,
   "origin": "project-owned",
   "license": "MIT",
-  "description": "入库管道样例集（PHASE1 §3 冻结的 S1–S10，S6 无文本层 PDF 随 T2 补入）：正样例验证规范化/分块的结构保留与可复现性，负样例固定失败终态目标。锚点（anchors）在断言侧做空白归一化匹配——PDF 提取文本的折行与缩进剥离不影响子串判定。本清单不进主 manifest、不参与 data/sync_sources.py 同步清理。",
+  "description": "入库管道样例集（PHASE1 §3 冻结的 S1–S10，S1–S10 全部落位）：正样例验证规范化/分块的结构保留与可复现性，负样例固定失败终态目标。锚点（anchors）在断言侧做空白归一化匹配——PDF 提取文本的折行与缩进剥离不影响子串判定。本清单不进主 manifest、不参与 data/sync_sources.py 同步清理。",
   "pdf_generation": {
     "script": "generate_pdf_samples.py",
     "library": "pymupdf 1.28.0",
@@ -95,6 +95,14 @@
       "purpose": "仅空白负样例（空格/制表/换行 .txt，strip 后为空）",
       "anchors": [],
       "sha256": "6f98cc02e70fe538650aedd805b69d9870cebf20a70ad59f7a52bcad4c778d37"
+    },
+    {
+      "sample": "S6",
+      "file": "s6_no_text_layer.pdf",
+      "expected": "failed:no_text_layer",
+      "purpose": "无文本层 PDF 负样例（整页栅格化图像，扫描件形态）：目标显式失败且全程无 OCR；当前页界标记骗过空文本检查（见 PHASE1-IMPL 附录 A）",
+      "anchors": [],
+      "sha256": "275719a1a8e95d62f91cab378fc55827ecf8152a5ea0b65a6461bf14df4523c1"
     },
     {
       "sample": "S7",

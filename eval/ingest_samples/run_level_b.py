@@ -68,6 +68,9 @@ def run_plan():
         ("S3", [_p("s3_pdf_text_layer.pdf")], None),
         ("S4", [_p("s4_pdf_multipage.pdf")], None),
         ("S5a", [_p("s5a_empty.md")], "samples/s5a_empty.md"),
+        # 无文本层 PDF（T2）：当前页界标记骗过空文本检查 -> 假成功入库；
+        # 目标 failed:no_text_layer 由 T3 落地后翻转此注释与下方源计数
+        ("S6", [_p("s6_no_text_layer.pdf")], None),
         ("S5b", [_p("s5b_whitespace.txt")], "samples/s5b_whitespace.txt"),
         ("S7#1", [_p("s7_duplicate.md")], "samples/s7_duplicate.md"),
         ("S7#2", [_p("s7_duplicate.md")], "samples/s7_duplicate.md"),
@@ -135,14 +138,15 @@ def main():
                    all(s["state"] == "ok" for s in steps if s["step"] in MUST_OK)))
     checks.append(("批量计数一致：sum(added)+sum(skipped) == 逐样本终态可计数行",
                    sum(s["added"] for s in steps) + sum(s["skipped"] for s in steps) == len(steps) - 1))  # S9 两计数皆 0
-    checks.append(("store source 列表 == 正样来源集（7 项）", len(sources) == len(MUST_OK)))
+    checks.append(("store source 列表 == 正样来源集 + S6（当前假成功，T3 修正后改为 7 项）",
+                   len(sources) == len(MUST_OK) + 1 and "s6_no_text_layer.pdf" in sources))
     for pair, fp in fingerprints.items():
         checks.append((f"{pair} 冲突对：胜者入库、败者无痕迹",
                        fp["winner_present"] and not fp["loser_present"]))
 
     report = {
         "kind": "ingest_samples_level_b",
-        "note": "S6（无文本层 PDF）随 T2 补入",
+        "note": "S6 当前假成功（页界标记骗过空文本检查），目标终态见 PHASE1-IMPL 附录 A",
         "steps": steps,
         "store": {
             "markdown_docs": md_files,
