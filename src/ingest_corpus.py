@@ -102,11 +102,7 @@ def _child_store_hash(client, collection: str) -> tuple[int, str]:
         points.extend(batch)
         if offset is None:
             break
-    points.sort(key=lambda p: str(p.id))
-    h = hashlib.sha256()
-    for p in points:
-        h.update(str(p.id).encode("utf-8"))
-        h.update(b"\x00")
+    points.sort(key=lambda p: p.payload.get("metadata", {}).get("chunk_id", ""))
     h = hashlib.sha256()
     for p in points:
         h.update(p.payload.get("page_content", "").encode("utf-8"))
