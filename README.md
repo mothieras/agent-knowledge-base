@@ -192,7 +192,7 @@ docs/              架构：分层依赖规则与领域词汇（ARCHITECTURE.md�
 
 分层规则与领域词汇详见 [ARCHITECTURE](docs/ARCHITECTURE.md)。
 
-测试：`python -m pytest tests/`（CI 实测 93 passed / 4 skipped；stub 隔离真实 LLM 与 Qdrant，覆盖 schemas、decision 协议、引用校验、跨请求状态隔离、检索路径与 chunker span、fixture 静态契约；4 项真实索引集成测试仅在本地已入库时运行，fresh clone 自动跳过）。CI 在 push/PR 时执行 compile 检查 + 全量 pytest。
+测试：`python -m pytest tests/`（本地实测 119 passed / 0 skipped，含 4 项真实索引集成测试；stub 隔离真实 LLM 与 Qdrant，覆盖 schemas、decision 协议、引用校验、跨请求状态隔离、检索路径与 chunker span、fixture 静态契约、ingest 样例集 Level A 管道验证与入库终态分类；无本地索引时 4 项集成测试自动跳过）。CI 在 push/PR 时执行 compile 检查 + 全量 pytest。
 
 ## API
 
@@ -220,6 +220,12 @@ usage = input/output tokens + estimated cost + model calls
 ## Sample Corpus
 
 仓库内置一份受治理的示例语料，用于演示与评测：从 [`mothieras/all-in-rag`](https://github.com/mothieras/all-in-rag) 固定修订版选取的 14 篇中文 RAG 教程（七类 topic），加上项目自有的两对虚构政策文档 fixture（各含一个已过期与一个当前有效版本，入库进同一 collection，用于验证版本元数据全链路传播并为版本冲突评测提供素材）。服务本身语料无关——入库与证据链路由 [`data/manifest.json`](data/manifest.json) 驱动，可整体替换为其他语料并重跑评测。治理规则与目录说明见 [`data/README.md`](data/README.md)。
+
+## Ingest 样例集与失败终态
+
+`data/ingest_samples/`：10 项样例（S1–S10，独立 manifest 登记 SHA-256 与用途，不进主语料 manifest）覆盖三种支持格式与空文本、无文本层 PDF、重复提交、同名冲突、不支持格式、非 UTF-8 编码等边界情形。两级验证：Level A（无模型，进 CI）断言结构锚点保留、child==parent span 切片、内容散列可复算与分块边界质量；Level B（`eval/ingest_samples/run_level_b.py`，本地手动跑，scratch 索引与质量索引隔离）逐样例对账目标终态表。
+
+入库结果结构化：`DocumentManager.add_documents` 逐文档返回显式终态（`ok / duplicate / conflict / unsupported_format / unsupported_encoding / empty_text / no_text_layer / parse_error`），`ingest_corpus.py` 汇总输出分类计数与失败明细——失败不冒充成功、不支持格式不静默剔除。要点：同名目标按内容比对区分重复与冲突（静默去重会掩盖登记错误）；无文本层 PDF 剥除页界标记后判空（不再假成功入库），转换全程无 OCR 调用（注意是依赖门控：装入 OCR 依赖后图像页会自动启用，升级依赖须重验）；PDF 条目 metadata 显式标注 `origin_page: "missing"`（原文件页码映射需在 chunker 合并/拆分中维护绝对偏移，属后续重写范围）；分块边界在 S1/S3/S4 上检查无缺陷（代码块/表格/标题在 parent 层完整、产物零丢失；句中切口仅见于超尺寸无结构文本，为 splitter 降级加重平衡的设计内行为）；快照 `index_id` 摘要剔除随机 point UUID，同输入同产物可复现。
 
 ## Background & Attribution
 
