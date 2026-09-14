@@ -196,3 +196,38 @@ def test_s10_current_behavior_gbk_raises_unicode_error():
     上层通用 except 把它吞成 print + skipped。"""
     with pytest.raises(UnicodeDecodeError):
         (SAMPLES_DIR / "s10_gbk.txt").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("sample,file", [("S1", "s1_structure.md"), ("S3", "s3_pdf_text_layer.pdf"), ("S4", "s4_pdf_multipage.pdf")])
+def test_chunk_boundary_quality(sample, file, tmp_path):
+    """T5/G6：标题/代码块/表格边界与跨节合并的样例级检查（证据固化）。
+
+    S1/S3/S4 上：代码围栏配对（代码块不在 parent 中间断开）、表格行完整
+    （行首 | 行尾 |）、标题不孤立于 parent 末行、大块拆分/重平衡后产物内容
+    零丢失（产物逐行均可定位到 parent 拼接中）。句中切口仅出现在 S4 超 4000
+    无结构 padding 单段（RecursiveCharacterTextSplitter 降级到词边界；rebalance
+    重切的边界对齐页界标记前的段落边界），属尺寸约束下的设计内行为，非缺陷。
+    """
+    src = SAMPLES_DIR / file
+    md = src if file.endswith(".md") else (tmp_path / (src.stem + ".md"))
+    if not file.endswith(".md"):
+        pdf_to_markdown(str(src), tmp_path)
+
+    parents, _ = _chunk_md(md, f"samples/{file}")
+    parent_all = _norm("\n".join(p.page_content for _, p in parents))
+    for pid, p in parents:
+        text = p.page_content
+        lines = text.splitlines()
+        assert text.count("```") % 2 == 0, f"{pid} 代码围栏不配对（代码块被切断）"
+        for ln in lines:
+            if ln.lstrip().startswith("|"):
+                assert ln.rstrip().endswith("|"), f"{pid} 表格行被切断: {ln!r}"
+        assert not __import__("re").match(r"^#{1,6}\s+\S", lines[-1]), f"{pid} 末行孤立标题（正文被拆到下一 parent）"
+
+    # 内容零丢失：产物每行（超长行按 100 字符分段）规范化后都在 parent 拼接中
+    for ln in md.read_text(encoding="utf-8").splitlines():
+        norm = _norm(ln)
+        if not norm:
+            continue
+        for k in range(0, len(norm), 100):
+            assert norm[k:k + 100] in parent_all, f"{sample} 产物内容丢失: {norm[k:k + 100]!r}"
