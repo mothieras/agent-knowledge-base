@@ -168,3 +168,28 @@ def test_md_success_path_byte_identical_copy(tmp_path, monkeypatch):
     assert _statuses(results) == ["ok"]
     md = md_dir / "samples__s1_structure.md.md"
     assert md.read_bytes() == Path(p).read_bytes()  # 复制语义逐字节不变
+
+
+def test_pdf_entries_carry_explicit_missing_page_locator(tmp_path):
+    """T4/G5：PDF 条目原文件页码定位显式标 missing（页界标记→页码映射需改
+    chunker 核心合并/拆分逻辑，超出阶段 1 边界，见 PHASE1-IMPL §5）。"""
+    chunker = DocumentChunker()
+    for pdf in ["s3_pdf_text_layer.pdf", "s4_pdf_multipage.pdf"]:
+        # PDF 产物先行转换到 tmp（create_chunks_single 吃规范化 md）
+        from utils import pdf_to_markdown
+        pdf_to_markdown(_p(pdf), tmp_path)
+        md = tmp_path / (Path(pdf).stem + ".md")
+        parents, children = chunker.create_chunks_single(md)
+        assert parents and children
+        for _, p in parents:
+            assert p.metadata.get("origin_page") == "missing", f"{pdf} parent 缺 locator 标注"
+        for c in children:
+            assert c.metadata.get("origin_page") == "missing", f"{pdf} child 缺 locator 标注"
+
+    # 非 PDF 条目不带该字段（原文件即规范化文件，页码概念不适用）
+    parents, children = chunker.create_chunks_single(SAMPLES_DIR / "s1_structure.md",
+                                                     source_name="s1_structure.md")
+    for _, p in parents:
+        assert "origin_page" not in p.metadata
+    for c in children:
+        assert "origin_page" not in c.metadata

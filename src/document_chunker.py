@@ -187,6 +187,10 @@ class DocumentChunker:
         for i, p_chunk in enumerate(parent_chunks):
             parent_id = f"{doc_path.stem}_p{i}"
             chunk_meta = {"source": source_name, "parent_id": parent_id}
+            if source_name.lower().endswith(".pdf"):
+                # G5：原文件页码定位缺失。页界标记→页码映射需在合并/拆分中维护
+                # 产物绝对偏移（阶段 1 边界外的 chunker 重写），先显式标注而非缺位
+                chunk_meta["origin_page"] = "missing"
             if doc_meta:
                 chunk_meta.update(doc_meta)
             p_chunk.metadata.update(chunk_meta)
