@@ -31,10 +31,11 @@ class AppService:
     """
 
     def __init__(self, *, snapshot: Snapshot, retrieval_service: RetrievalService,
-                 generation=None):
+                 generation=None, entry_service=None):
         self.snapshot = snapshot
         self.retrieval = retrieval_service
         self.generation = generation
+        self.entries = entry_service
         self._slots = asyncio.Semaphore(MAX_CONCURRENT_QUERIES)
 
     @property
@@ -119,6 +120,12 @@ def build_app_service(*, snapshot_path=None, vector_db=None, parent_store=None,
     source_uris = _source_uris_from_manifests()
     retrieval_service = RetrievalService(retriever, evidence, source_uris=source_uris)
 
+    # 条目服务（PHASE2 §6.1/6.2）：独立 SQLite 文件，不触碰 Qdrant/语料快照
+    from db.entry_store import EntryStore
+    from core.entry_service import EntryService
+
+    entry_service = EntryService(EntryStore(config.ENTRIES_DB_PATH))
+
     generation = None
     if build_generation and config.LLM_API_KEY:
         from langchain_openai import ChatOpenAI
@@ -137,4 +144,4 @@ def build_app_service(*, snapshot_path=None, vector_db=None, parent_store=None,
         generation = AnswerService(llm, retriever, evidence, source_uris)
 
     return AppService(snapshot=snapshot, retrieval_service=retrieval_service,
-                      generation=generation)
+                      generation=generation, entry_service=entry_service)

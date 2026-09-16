@@ -25,3 +25,4 @@ rag_evaluation_*.png
 .fastembed_cache/
 .mcp.json
 .pi/
+entries.db*

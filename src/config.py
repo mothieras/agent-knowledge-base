@@ -11,6 +11,8 @@ MARKDOWN_DIR = os.path.join(_BASE_DIR, "markdown_docs")
 # 数据目录支持环境变量覆盖（规模实测/容器挂载用独立快照，不污染质量索引）
 PARENT_STORE_PATH = os.environ.get("PARENT_STORE_PATH", os.path.join(_BASE_DIR, "parent_store"))
 QDRANT_DB_PATH = os.environ.get("QDRANT_DB_PATH", os.path.join(_BASE_DIR, "qdrant_db"))
+# 条目库：单 SQLite 文件（WAL），运行时数据不进版本库（PHASE2 §6.2）
+ENTRIES_DB_PATH = os.environ.get("ENTRIES_DB_PATH", os.path.join(_BASE_DIR, "entries.db"))
 
 # --- Qdrant Configuration ---
 CHILD_COLLECTION = "document_child_chunks"
