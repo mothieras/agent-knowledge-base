@@ -33,7 +33,7 @@ _TRANSITIONS = {
     ("deleted", "restore"): "active",
 }
 
-_UNSET = object()  # 修订请求中区分「未提供」与「显式 null」（§3.6 expires_at 语义）
+UNSET = object()  # 修订请求中区分「未提供」与「显式 null」（§3.6 expires_at 语义）
 
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
@@ -322,26 +322,26 @@ class EntryService:
         return _entry_of(json.loads(row["snapshot"]), self._now())
 
     def revise(self, entry_id: str, *, expected_revision: int, author,
-               body=_UNSET, type=_UNSET, scope=_UNSET, expires_at=_UNSET,
-               source=_UNSET, idempotency_key=None) -> Entry:
+               body=UNSET, type=UNSET, scope=UNSET, expires_at=UNSET,
+               source=UNSET, idempotency_key=None) -> Entry:
         expected_revision = _validate_expected_revision(expected_revision)
         entry_author = _validate_author(author)
         key = _validate_idempotency_key(idempotency_key) if idempotency_key is not None else None
 
-        new_body = _validate_body(body) if body is not _UNSET else None
-        new_type = _validate_type(type) if type is not _UNSET else None
-        new_scope = _validate_scope(scope) if scope is not _UNSET else None
+        new_body = _validate_body(body) if body is not UNSET else None
+        new_type = _validate_type(type) if type is not UNSET else None
+        new_scope = _validate_scope(scope) if scope is not UNSET else None
         new_expires = (
             _rfc3339(_parse_rfc3339(expires_at)) if expires_at is not None else None
-        ) if expires_at is not _UNSET else _UNSET
-        new_source = _validate_source(source) if source is not _UNSET else _UNSET
+        ) if expires_at is not UNSET else UNSET
+        new_source = _validate_source(source) if source is not UNSET else UNSET
 
         payload = {
             "entry_id": entry_id, "expected_revision": expected_revision, "author": author,
         }
         for name, raw in (("body", body), ("type", type), ("scope", scope),
                           ("expires_at", expires_at), ("source", source)):
-            if raw is not _UNSET:
+            if raw is not UNSET:
                 payload[name] = raw
         request_hash = _request_hash("revise", payload)
 
@@ -364,9 +364,9 @@ class EntryService:
                 state["type"] = new_type
             if new_scope is not None:
                 state["scope"] = _scope_dict(new_scope)
-            if new_expires is not _UNSET:
+            if new_expires is not UNSET:
                 state["expires_at"] = new_expires
-            if new_source is not _UNSET:
+            if new_source is not UNSET:
                 state["source"] = _source_dict(new_source)
             result = self._apply(state, "update", entry_author)
             if key is not None:

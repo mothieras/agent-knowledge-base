@@ -31,7 +31,8 @@ LLM Agent 的答案质量取决于它引用的事实是否可信。与其让模�
 - **引用机械校验**：evidence_id 必属本次实际证据、quote 必须是证据原文精确子串；预算内自动修复一次，仍失败显式报错——不伪造引用
 - **单次 decision 协议**：`answered / clarification_required / refused` 皆为终态；无会话、无跨请求状态
 - **双模式问答**：`rag` 单图（快、便宜）与 `agentic` 双图（改写/拆解/并行补查，共享请求级预算：3 子问题 / 8 工具调用 / 10 迭代），同 index/模型同场对照见 Evaluation
-- **MCP 只读接入**：Streamable HTTP 端点 + Bearer 鉴权，Agent 的工具即知识库
+- **MCP 接入**：Streamable HTTP 端点 + Bearer 鉴权，Agent 的工具即知识库
+- **共享条目服务（Memory/Knowledge）**：Agent 跨会话/跨客户端写入、修订、按 ID 与按修订回查持久条目；原子版本检查（409 附当前条目）、幂等写入、软生命周期（archive/delete/restore）、查询时到期判定、全量修订历史——核心过程不依赖模型（条目搜索随 T3 落地）。接入指南见 [docs/ENTRY_TOOL_GUIDE.md](docs/ENTRY_TOOL_GUIDE.md)
 - **manifest 语料治理**：逐文件登记来源、许可、SHA-256；同步采用镜像语义清理清单外残留，语料可整体替换
 - **版本元数据全链路**：version / effective_date / expired_date / priority 从 manifest 流经 chunk → 检索 → API → eval
 - **可复现评测**：30 题 golden set（6 类题型）、40 题检索挑战集、规模与并发实测；报告绑定 commit / index / 模型 / 参数
@@ -98,6 +99,11 @@ MCP 端点（Streamable HTTP）：`http://127.0.0.1:8000/mcp`，与 HTTP 共用 
 | `search_knowledge` | 结构化证据检索，返回带 span/版本/score 的命中 |
 | `get_context` | 按 `evidence_id` 回查有界原文窗口（含 `content_hash`） |
 | `ask_knowledge` | 单次问答委托（配置生成模型后发布） |
+| `save_entry` | 新增共享 Memory/Knowledge 条目（scope/有效期/来源/幂等键） |
+| `get_entry` | 按 ID 读条目当前完整状态（含到期判定） |
+| `revise_entry` | 修订条目（`expected_revision` 并发检查；`updates` 键存在=修改、null=清除） |
+| `entry_lifecycle` | archive / unarchive / delete / restore 软生命周期 |
+| `list_entry_revisions` | 修订历史列表（`search_entries` 随 T3 发布） |
 
 ```json
 {
@@ -110,7 +116,7 @@ MCP 端点（Streamable HTTP）：`http://127.0.0.1:8000/mcp`，与 HTTP 共用 
 }
 ```
 
-实测（Pi 0.85.1 + pi-mcp-adapter 2.32.1 ↔ 服务端 MCP SDK 2.1.1）：工具发现 → Bearer 鉴权 → search 命中 → get_context 回查 → **Pi 用自己的模型基于证据作答并引用 source**，五步全绿；`ask_knowledge` decision=answered。工具的文本通道与 structuredContent 同载荷，只渲染文本的 MCP 客户端也能拿到完整结构化结果。冒烟脚本：`python src/smoke_mcp.py --url http://127.0.0.1:8000/mcp [--token <token>]`。
+实测（Pi 0.85.1 + pi-mcp-adapter 2.32.1 ↔ 服务端 MCP SDK 2.1.1）：工具发现 → Bearer 鉴权 → search 命中 → get_context 回查 → **Pi 用自己的模型基于证据作答并引用 source**，五步全绿；`ask_knowledge` decision=answered。工具的文本通道与 structuredContent 同载荷，只渲染文本的 MCP 客户端也能拿到完整结构化结果。冒烟脚本：`python src/smoke_mcp.py --url http://127.0.0.1:8000/mcp [--token <token>]`（含条目工具 save→revise→冲突通道→lifecycle→历史全链路）。
 
 ## Evaluation
 
@@ -198,12 +204,24 @@ docs/              架构：分层依赖规则与领域词汇（ARCHITECTURE.md�
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
-| `GET` | `/health` | 检索 readiness（不依赖 LLM） |
+| `GET` | `/health` | readiness：检索 + 条目库（不依赖 LLM） |
 | `GET` | `/info` | 快照 index_id、模型标识、可用 modes |
 | `POST` | `/search` | 结构化证据检索（无生成模型调用） |
 | `GET` | `/evidence/{evidence_id}` | 按 ID 回查有界原文窗口 |
 | `POST` | `/invoke` | 单次问答（`mode`=rag/agentic，默认 rag） |
 | `POST` | `/stream` | 同一问答契约的 SSE 进度与结果 |
+| `POST` | `/entries` | 新增共享条目（201；scope/有效期/来源/幂等键） |
+| `GET` | `/entries/{id}` | 条目当前完整状态（含查询时到期判定） |
+| `POST` | `/entries/{id}/revisions` | 修订（`expected_revision` 并发检查，409 附当前条目） |
+| `GET` | `/entries/{id}/revisions` | 修订历史列表 |
+| `GET` | `/entries/{id}/revisions/{n}` | 指定修订全量快照 |
+| `POST` | `/entries/{id}/lifecycle` | archive / unarchive / delete / restore |
+
+条目写操作复用并发槽纪律（busy 不排队 → 429）；错误统一 `{code, message}`：
+`invalid_request` 400 · `invalid_project` 400 · `not_found` 404 ·
+`revision_conflict` 409（附 `current`）· `idempotency_conflict` 409 ·
+`entry_deleted` 409 · `invalid_transition` 409 · `busy` 429。条目库为独立
+SQLite 文件（`ENTRIES_DB_PATH`，默认 `entries.db`，WAL）。
 
 问答结果统一为单次 decision 协议：
 

@@ -4,8 +4,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from core.app_service import AppService
+from core.entry_service import EntryService
 from core.retrieval_service import RetrievalService
 from db.evidence_store import EvidenceStore
+from db.entry_store import EntryStore
 from db.snapshot import Snapshot
 
 
@@ -96,6 +98,7 @@ def make_app_service(generation=True):
         }),
         retrieval_service=make_retrieval_service(),
         generation=_FakeGeneration() if generation else None,
+        entry_service=EntryService(EntryStore(":memory:")),  # 条目契约测试用内存库
     )
     return svc
 

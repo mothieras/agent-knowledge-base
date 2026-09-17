@@ -46,6 +46,10 @@ class RevisionSummary(BaseModel):
     recorded_at: str
 
 
+class RevisionList(BaseModel):
+    revisions: list[RevisionSummary]
+
+
 ENTRY_ERROR_CODES = {
     "invalid_request": 400,
     "invalid_project": 400,

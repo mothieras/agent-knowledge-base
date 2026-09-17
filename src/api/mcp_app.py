@@ -25,8 +25,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from core.app_service import AppService
+from core.entry_service import EntryServiceError, UNSET
 from core.retrieval_service import ServiceError
 from schema.dto import AnswerRequest, AnswerResponse, EvidenceWindow, SearchRequest, SearchResponse
+from schema.entry_dto import Entry, RevisionList
 
 EXPECTED_TOKEN = os.environ.get("DEMO_API_TOKEN", "")
 
@@ -40,6 +42,20 @@ def _text_payload(payload: dict) -> TextContent:
     至少有一条可用通道。
     """
     return TextContent(type="text", text=json.dumps(payload, ensure_ascii=False))
+
+
+def _entry_tool_error(exc: EntryServiceError) -> ToolError:
+    # 错误载荷为 JSON（含 code 与冲突时的 current 条目），调用方可解析重读重试
+    return ToolError(json.dumps(
+        {"code": exc.code, "message": exc.message, **(exc.data or {})}, ensure_ascii=False))
+
+
+def _entry_result(payload) -> CallToolResult:
+    data = payload.model_dump() if hasattr(payload, "model_dump") else payload
+    return CallToolResult(
+        content=[_text_payload(data)],
+        structured_content=data,
+    )
 
 
 class BearerMiddleware(BaseHTTPMiddleware):
@@ -143,6 +159,113 @@ def create_mcp_server(include_ask: bool = True) -> MCPServer:
                 content=[_text_payload(resp.model_dump())],
                 structured_content=resp.model_dump(),
             )
+
+    # --- 条目服务工具（PHASE2 §5.3；search_entries 随 T3 无模型搜索落地） ---
+
+    @server.tool(structured_output=True)
+    async def save_entry(
+        ctx: Context[Any, Any],
+        type: Annotated[str, "条目类型：memory | knowledge"],
+        body: Annotated[str, "条目正文（非空，≤64KiB）"],
+        author: Annotated[str, "自报作者，约定「客户端/版本」如 pi/0.85.1（记录用途，非强身份）"],
+        scope: Annotated[dict | None, '{"kind":"global"} 或 {"kind":"projects","projects":[标签1-16]}；缺省全局'] = None,
+        expires_at: Annotated[str | None, "有效期 RFC3339（可选，查询时判定到期）"] = None,
+        source: Annotated[dict | None, '{"url?","note?"} 来源引用；未知来源传 null，不伪造'] = None,
+        idempotency_key: Annotated[str | None, "幂等键：同键同请求重试返回原结果"] = None,
+    ) -> Annotated[CallToolResult, Entry]:
+        """保存一条共享 Memory/Knowledge 条目（revision=1）。
+
+        记什么、不记什么见 docs/ENTRY_TOOL_GUIDE.md：跨会话/跨 Agent 复用的
+        事实与方法记这里；一次性过程状态留在原生记忆。
+        """
+        svc: AppService = ctx.request_context.lifespan_context
+        try:
+            entry = svc.entries.create(
+                type=type, body=body, author=author,
+                scope=scope or {"kind": "global"},
+                expires_at=expires_at, source=source,
+                idempotency_key=idempotency_key,
+            )
+        except EntryServiceError as exc:
+            raise _entry_tool_error(exc) from exc
+        return _entry_result(entry)
+
+    @server.tool(structured_output=True)
+    async def get_entry(
+        ctx: Context[Any, Any],
+        entry_id: Annotated[str, "条目 ID（entry_ 前缀）"],
+    ) -> Annotated[CallToolResult, Entry]:
+        """按 ID 读取条目当前完整状态（含到期判定；已删除条目也可显式读取）。"""
+        svc: AppService = ctx.request_context.lifespan_context
+        try:
+            entry = svc.entries.get(entry_id)
+        except EntryServiceError as exc:
+            raise _entry_tool_error(exc) from exc
+        return _entry_result(entry)
+
+    @server.tool(structured_output=True)
+    async def revise_entry(
+        ctx: Context[Any, Any],
+        entry_id: Annotated[str, "条目 ID"],
+        expected_revision: Annotated[int, "调用方持有的修订号；不匹配返回 revision_conflict + 当前条目"],
+        author: Annotated[str, "自报作者（修订人，记入历史）"],
+        updates: Annotated[dict | None, '变更字段 {"type?","body?","scope?","expires_at?","source?"}：键存在=修改，值为 null=清除（仅 expires_at/source）；缺省不变'] = None,
+        idempotency_key: Annotated[str | None, "幂等键"] = None,
+    ) -> Annotated[CallToolResult, Entry]:
+        """修订条目（revision+1，历史全量快照保留）。
+
+        冲突时读取错误载荷中的 current 条目，整合后以新修订号重试；服务不
+        自动合并。
+        """
+        svc: AppService = ctx.request_context.lifespan_context
+        fields = ("type", "body", "scope", "expires_at", "source")
+        updates = updates or {}
+        unknown = set(updates) - set(fields)
+        if unknown:
+            raise _entry_tool_error(EntryServiceError(
+                "invalid_request", f"未知字段: {sorted(unknown)}")) from None
+        changes = {k: (updates[k] if k in updates else UNSET) for k in fields}
+        try:
+            entry = svc.entries.revise(
+                entry_id, expected_revision=expected_revision, author=author,
+                idempotency_key=idempotency_key, **changes,
+            )
+        except EntryServiceError as exc:
+            raise _entry_tool_error(exc) from exc
+        return _entry_result(entry)
+
+    @server.tool(structured_output=True)
+    async def entry_lifecycle(
+        ctx: Context[Any, Any],
+        entry_id: Annotated[str, "条目 ID"],
+        op: Annotated[str, "archive（归档）| unarchive | delete（软删）| restore"],
+        expected_revision: Annotated[int, "调用方持有的修订号"],
+        author: Annotated[str, "自报作者"],
+        idempotency_key: Annotated[str | None, "幂等键"] = None,
+    ) -> Annotated[CallToolResult, Entry]:
+        """生命周期操作：active/archive/delete 三态软转换，历史与正文全保留。"""
+        svc: AppService = ctx.request_context.lifespan_context
+        try:
+            entry = svc.entries.lifecycle(
+                entry_id, op=op, expected_revision=expected_revision,
+                author=author, idempotency_key=idempotency_key,
+            )
+        except EntryServiceError as exc:
+            raise _entry_tool_error(exc) from exc
+        return _entry_result(entry)
+
+    @server.tool(structured_output=True)
+    async def list_entry_revisions(
+        ctx: Context[Any, Any],
+        entry_id: Annotated[str, "条目 ID"],
+    ) -> Annotated[CallToolResult, RevisionList]:
+        """列出修订历史（revision/op/modifier/时间）；按修订回查走 HTTP。"""
+        svc: AppService = ctx.request_context.lifespan_context
+        try:
+            revisions = svc.entries.history(entry_id)
+        except EntryServiceError as exc:
+            raise _entry_tool_error(exc) from exc
+        return _entry_result(RevisionList(revisions=revisions))
 
     return server
 
