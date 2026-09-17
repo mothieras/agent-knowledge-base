@@ -14,7 +14,13 @@ from datetime import datetime, timezone
 from typing import Callable
 
 from db.entry_store import EntryStore
-from schema.entry_dto import Entry, RevisionSummary, Scope, SourceRef
+from schema.entry_dto import (
+    Entry,
+    EntrySearchResult,
+    RevisionSummary,
+    Scope,
+    SourceRef,
+)
 
 PROJECT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 MAX_PROJECTS = 16
@@ -306,6 +312,38 @@ class EntryService:
 
     def get(self, entry_id: str) -> Entry:
         return _entry_of(_state_of(self._require_entry(entry_id)), self._now())
+
+    def search(self, *, query, projects=None, all_projects=False, type=None,
+               limit=20) -> EntrySearchResult:
+        """全文搜索（§4.1/§4.2）：范围语义与恒定过滤见 store.search_fts。"""
+        if not isinstance(query, str) or not query.strip():
+            raise EntryServiceError("invalid_request", "query 必填且非空")
+        if len(query) > 2000:
+            raise EntryServiceError("invalid_request", "query 超过 2000 字符")
+        if not isinstance(all_projects, bool):
+            raise EntryServiceError("invalid_request", "all_projects 须为布尔值")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 50:
+            raise EntryServiceError("invalid_request", "limit 须为 1-50，默认 20")
+        entry_type = _validate_type(type) if type is not None else None
+
+        if projects is not None:
+            if all_projects:
+                raise EntryServiceError("invalid_request", "projects 与 all_projects 互斥")
+            if not isinstance(projects, list) or not projects:
+                raise EntryServiceError("invalid_request", "projects 须为非空标签列表（仅查全局则省略）")
+            scope = sorted({_normalize_project(p) for p in projects})
+        elif all_projects:
+            scope = None
+        else:
+            scope = "global"  # 未指定 = 仅全局（§4.1）
+
+        now = self._now()
+        rows = self._store.search_fts(
+            query, scope=scope, type_filter=entry_type,
+            now_iso=_rfc3339(now), limit=limit,
+        )
+        results = [_entry_of(_state_of(r), now) for r in rows]
+        return EntrySearchResult(query=query, results=results, returned_k=len(results))
 
     def history(self, entry_id: str) -> list[RevisionSummary]:
         self._require_entry(entry_id)

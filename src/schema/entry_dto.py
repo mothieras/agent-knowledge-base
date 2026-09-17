@@ -50,6 +50,14 @@ class RevisionList(BaseModel):
     revisions: list[RevisionSummary]
 
 
+class EntrySearchResult(BaseModel):
+    """搜索结果（§4.2）：恒排除 archived/deleted/expired；命中绑定当前修订。"""
+
+    query: str
+    results: list[Entry]
+    returned_k: int
+
+
 ENTRY_ERROR_CODES = {
     "invalid_request": 400,
     "invalid_project": 400,

@@ -32,7 +32,7 @@ LLM Agent 的答案质量取决于它引用的事实是否可信。与其让模�
 - **单次 decision 协议**：`answered / clarification_required / refused` 皆为终态；无会话、无跨请求状态
 - **双模式问答**：`rag` 单图（快、便宜）与 `agentic` 双图（改写/拆解/并行补查，共享请求级预算：3 子问题 / 8 工具调用 / 10 迭代），同 index/模型同场对照见 Evaluation
 - **MCP 接入**：Streamable HTTP 端点 + Bearer 鉴权，Agent 的工具即知识库
-- **共享条目服务（Memory/Knowledge）**：Agent 跨会话/跨客户端写入、修订、按 ID 与按修订回查持久条目；原子版本检查（409 附当前条目）、幂等写入、软生命周期（archive/delete/restore）、查询时到期判定、全量修订历史——核心过程不依赖模型（条目搜索随 T3 落地）。接入指南见 [docs/ENTRY_TOOL_GUIDE.md](docs/ENTRY_TOOL_GUIDE.md)
+- **共享条目服务（Memory/Knowledge）**：Agent 跨会话/跨客户端写入、修订、搜索与回查持久条目；全文搜索（SQLite FTS5 + jieba 预分词 + bm25，无模型）按全局/单项目/多项目/全部项目范围过滤；原子版本检查（409 附当前条目）、幂等写入、软生命周期（archive/delete/restore）、查询时到期判定、全量修订历史。接入指南见 [docs/ENTRY_TOOL_GUIDE.md](docs/ENTRY_TOOL_GUIDE.md)
 - **manifest 语料治理**：逐文件登记来源、许可、SHA-256；同步采用镜像语义清理清单外残留，语料可整体替换
 - **版本元数据全链路**：version / effective_date / expired_date / priority 从 manifest 流经 chunk → 检索 → API → eval
 - **可复现评测**：30 题 golden set（6 类题型）、40 题检索挑战集、规模与并发实测；报告绑定 commit / index / 模型 / 参数
@@ -103,7 +103,8 @@ MCP 端点（Streamable HTTP）：`http://127.0.0.1:8000/mcp`，与 HTTP 共用 
 | `get_entry` | 按 ID 读条目当前完整状态（含到期判定） |
 | `revise_entry` | 修订条目（`expected_revision` 并发检查；`updates` 键存在=修改、null=清除） |
 | `entry_lifecycle` | archive / unarchive / delete / restore 软生命周期 |
-| `list_entry_revisions` | 修订历史列表（`search_entries` 随 T3 发布） |
+| `list_entry_revisions` | 修订历史列表 |
+| `search_entries` | 条目全文搜索（范围/类型过滤；未指定范围仅查全局） |
 
 ```json
 {
@@ -211,6 +212,7 @@ docs/              架构：分层依赖规则与领域词汇（ARCHITECTURE.md�
 | `POST` | `/invoke` | 单次问答（`mode`=rag/agentic，默认 rag） |
 | `POST` | `/stream` | 同一问答契约的 SSE 进度与结果 |
 | `POST` | `/entries` | 新增共享条目（201；scope/有效期/来源/幂等键） |
+| `POST` | `/entries/search` | 条目全文搜索（范围/类型/limit；恒排除非 active 与已到期） |
 | `GET` | `/entries/{id}` | 条目当前完整状态（含查询时到期判定） |
 | `POST` | `/entries/{id}/revisions` | 修订（`expected_revision` 并发检查，409 附当前条目） |
 | `GET` | `/entries/{id}/revisions` | 修订历史列表 |

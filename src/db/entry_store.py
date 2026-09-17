@@ -2,14 +2,15 @@
 
 事务由 L2 服务经 transaction()（BEGIN IMMEDIATE）组合，本层只提供行级原语。
 FTS5 存空格预分词文本（unicode61 按空格切分，PHASE2 Q9）；分词器为注入
-seam，default_tokenize 是 T3 采定 jieba 前的占位实现。条目与 FTS 行在同一
-事务内提交（写成功即可搜索，Q8）。
+seam，default_tokenize = jieba cut_for_search（T3 实测采定）。条目与 FTS 行
+在同一事务内提交（写成功即可搜索，Q8）。
 """
 from __future__ import annotations
 
 import re
 import sqlite3
 import threading
+import warnings
 from contextlib import contextmanager
 from typing import Callable
 
@@ -51,12 +52,18 @@ _ENTRY_FIELDS = (
     "created_at", "updated_at", "revision", "status", "expires_at", "source",
 )
 
-# 占位分词（T3 换 jieba）：ascii 字母数字串 + CJK 单字，空格连接
-_TOKEN_RE = re.compile(r"[a-z0-9]+|[㐀-鿿]")
+# 过滤纯标点 token（保留至少含一个字母/数字的词元）
+_HAS_ALNUM_RE = re.compile(r"[^\W_]", re.UNICODE)
 
 
 def default_tokenize(text: str) -> str:
-    return " ".join(_TOKEN_RE.findall(text.lower()))
+    """jieba search 模式 + 小写，空格连接；入库与查询共用（Q9，T3 采定）。"""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # jieba 0.42 在 3.12 有无害 Syntax/pkg_resources 告警
+        import jieba
+    return " ".join(
+        t for t in jieba.cut_for_search(text.lower()) if _HAS_ALNUM_RE.search(t)
+    )
 
 
 class EntryStore:
@@ -165,3 +172,42 @@ class EntryStore:
             " VALUES (?, ?, ?, ?)",
             (key, request_hash, response, created_at),
         )
+
+    def search_fts(self, query: str, *, scope: str | list[str] | None = None,
+                   type_filter: str | None = None, now_iso: str,
+                   limit: int) -> list[dict]:
+        """FTS5 全文检索（§4.1/§4.2）：恒排除非 active 与已到期。
+
+        scope：None=不限（all_projects）；"global"=仅全局；标签列表=全局+关联
+        任一标签。WHERE 先于 LIMIT（范围过滤先于最终截断）。分词与写路径同源。
+        """
+        # OR + bm25：AND 会被查询侧虚词/措辞差异整题击落，OR 由排序承担选择性
+        tokens = " OR ".join(f'"{t}"' for t in self._tokenize(query).split())
+        if not tokens:
+            return []
+        where = [
+            "e.status = 'active'",
+            "(e.expires_at IS NULL OR e.expires_at > ?)",
+            "entries_fts MATCH ?",
+        ]
+        params: list = [now_iso, tokens]
+        if type_filter is not None:
+            where.append("e.type = ?")
+            params.append(type_filter)
+        if scope == "global":
+            where.append("e.scope_kind = 'global'")
+        elif isinstance(scope, list):
+            marks = ",".join("?" for _ in scope)
+            where.append(
+                "(e.scope_kind = 'global' OR EXISTS ("
+                "SELECT 1 FROM json_each(e.scope_projects) jp WHERE jp.value IN (" + marks + ")))"
+            )
+            params.extend(scope)
+        sql = (
+            "SELECT e.* FROM entries_fts JOIN entries e ON e.rowid = entries_fts.rowid"
+            " WHERE " + " AND ".join(where) + " ORDER BY rank LIMIT ?"
+        )
+        params.append(limit)
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]

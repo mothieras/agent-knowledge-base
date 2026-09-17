@@ -1,4 +1,6 @@
 fastembed==0.8.0
+# 条目库 FTS5 中文空格预分词（PHASE2 Q9，T3 采定；纯 Python 无模型依赖）
+jieba==0.42.1
 gradio==6.20.0
 httpx==0.28.1
 ipykernel==7.3.0

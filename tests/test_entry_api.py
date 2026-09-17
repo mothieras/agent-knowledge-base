@@ -200,3 +200,35 @@ def test_write_busy(monkeypatch, app_client):
 ])
 def test_write_not_found(app_client, path, payload):
     assert app_client.post(path, json=payload).status_code == 404
+
+
+def test_search_scope_and_filters(app_client):
+    global_id = create_entry(app_client, body="全局的 SQLite WAL 并发条目").json()["id"]
+    create_entry(app_client, body="项目的 SQLite WAL 并发条目",
+                 scope={"kind": "projects", "projects": ["proj"]})
+
+    r = app_client.post("/entries/search", json={"query": "WAL 并发"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["returned_k"] == 1 and body["results"][0]["id"] == global_id
+
+    r = app_client.post("/entries/search", json={"query": "WAL 并发", "projects": ["proj"]})
+    assert r.json()["returned_k"] == 2
+
+    r = app_client.post("/entries/search", json={"query": "WAL 并发", "all_projects": True})
+    assert r.json()["returned_k"] == 2
+
+    for bad in ({"query": ""}, {"query": "x", "limit": 0}, {"query": "x", "type": "note"},
+                {"query": "x", "projects": []}, {"query": "x", "projects": ["a"], "all_projects": True}):
+        resp = app_client.post("/entries/search", json=bad)
+        assert resp.status_code == 400, bad
+        assert resp.json()["detail"]["code"] == "invalid_request"
+
+
+def test_search_excludes_archived_and_expired(app_client):
+    entry = create_entry(app_client, body="唯一的 ephemeral 条目",
+                         expires_at="2027-01-01T00:00:00Z").json()
+    assert app_client.post("/entries/search", json={"query": "ephemeral"}).json()["returned_k"] == 1
+    app_client.post(f"/entries/{entry['id']}/lifecycle",
+                    json={"op": "archive", "expected_revision": 1, "author": "a"})
+    assert app_client.post("/entries/search", json={"query": "ephemeral"}).json()["returned_k"] == 0

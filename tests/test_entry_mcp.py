@@ -11,7 +11,8 @@ import pytest
 from api.mcp_app import create_mcp_server
 from conftest import make_app_service
 
-ENTRY_TOOLS = {"save_entry", "get_entry", "revise_entry", "entry_lifecycle", "list_entry_revisions"}
+ENTRY_TOOLS = {"save_entry", "get_entry", "revise_entry", "entry_lifecycle",
+               "list_entry_revisions", "search_entries"}
 
 
 def _make_context(svc):
@@ -134,3 +135,26 @@ def test_idempotent_save_replay(mcp_server, ctx):
     a = save(mcp_server, ctx, idempotency_key="mcp-k").structured_content
     b = save(mcp_server, ctx, idempotency_key="mcp-k").structured_content
     assert a == b
+
+
+def test_search_entries_scope_and_dual_channel(mcp_server, ctx):
+    save(mcp_server, ctx, body="全局的向量检索余弦相似度条目")
+    proj = save(mcp_server, ctx, body="项目的向量检索余弦相似度条目",
+                scope={"kind": "projects", "projects": ["proj"]}).structured_content
+
+    result = call(mcp_server, ctx, "search_entries", {"query": "余弦相似度"})
+    sc = result.structured_content
+    assert sc["returned_k"] == 1  # 未指定范围仅全局
+    assert json.loads(result.content[0].text) == sc  # 双通道同载荷
+
+    result = call(mcp_server, ctx, "search_entries",
+                  {"query": "余弦相似度", "projects": ["proj"]})
+    assert result.structured_content["returned_k"] == 2
+    assert proj["id"] in [e["id"] for e in result.structured_content["results"]]
+
+    result = call(mcp_server, ctx, "search_entries",
+                  {"query": "余弦相似度", "all_projects": True, "type": "memory"})
+    assert result.structured_content["returned_k"] == 2
+
+    with pytest.raises(Exception, match="invalid_request"):
+        call(mcp_server, ctx, "search_entries", {"query": "余弦", "limit": 99})

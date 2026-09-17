@@ -84,8 +84,8 @@
 
 ## 6. 何时检索、何时回查
 
-- 任务开始、遇到相关决策点时：`search_entries`（T3 发布）按 scope 语义搜索
-  ——未指定范围=仅全局；指定项目=全局+关联项目；恒排除 archived/deleted/expired。
+- 任务开始、遇到相关决策点时：`search_entries` 按 scope 语义搜索——未指定
+  范围=仅全局；指定项目=全局+关联项目；恒排除 archived/deleted/expired。
 - 拿到条目要改：先 `get_entry` 读当前修订号再修订；搜索结果里的 revision 就是
   命中时的修订号。
 - 看历史演变、对比「当时怎么记的」：`list_entry_revisions` + 按修订读（HTTP）。
@@ -113,7 +113,7 @@ author 是记录用途，**不是强身份保证**，不要据此做安全决策
 | 生命周期 | `POST /entries/{id}/lifecycle` | `entry_lifecycle` |
 | 历史列表 | `GET /entries/{id}/revisions` | `list_entry_revisions` |
 | 指定修订快照 | `GET /entries/{id}/revisions/{n}` | （HTTP） |
-| 搜索 | `POST /entries/search` | `search_entries`（T3） |
+| 搜索 | `POST /entries/search` | `search_entries` |
 
 错误统一为 `{code, message}`（冲突另含 `current`）；MCP 侧错误载荷为可解析
 JSON（文本通道）。错误码：`invalid_request` 400 · `invalid_project` 400 ·

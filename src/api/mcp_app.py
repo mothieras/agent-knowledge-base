@@ -28,7 +28,7 @@ from core.app_service import AppService
 from core.entry_service import EntryServiceError, UNSET
 from core.retrieval_service import ServiceError
 from schema.dto import AnswerRequest, AnswerResponse, EvidenceWindow, SearchRequest, SearchResponse
-from schema.entry_dto import Entry, RevisionList
+from schema.entry_dto import Entry, EntrySearchResult, RevisionList
 
 EXPECTED_TOKEN = os.environ.get("DEMO_API_TOKEN", "")
 
@@ -266,6 +266,30 @@ def create_mcp_server(include_ask: bool = True) -> MCPServer:
         except EntryServiceError as exc:
             raise _entry_tool_error(exc) from exc
         return _entry_result(RevisionList(revisions=revisions))
+
+    @server.tool(structured_output=True)
+    async def search_entries(
+        ctx: Context[Any, Any],
+        query: Annotated[str, "检索查询（中文/英文/混合，≤2000 字符）"],
+        projects: Annotated[list[str] | None, "项目标签列表：候选=全局+关联任一标签；省略则仅查全局"] = None,
+        all_projects: Annotated[bool, "true=全局+全部项目关联（与 projects 互斥）"] = False,
+        type: Annotated[str | None, "memory | knowledge；省略查双类型"] = None,
+        limit: Annotated[int, "返回条数（1-50），默认 20"] = 20,
+    ) -> Annotated[CallToolResult, EntrySearchResult]:
+        """按全文相关性搜索条目（无模型，纯词法 bm25）。
+
+        恒排除已归档/已删除/已到期；未指定范围仅查全局，指定项目则包含全局。
+        命中带当前修订号，修订内容需回查时用 get_entry。
+        """
+        svc: AppService = ctx.request_context.lifespan_context
+        try:
+            result = svc.entries.search(
+                query=query, projects=projects, all_projects=all_projects,
+                type=type, limit=limit,
+            )
+        except EntryServiceError as exc:
+            raise _entry_tool_error(exc) from exc
+        return _entry_result(result)
 
     return server
 

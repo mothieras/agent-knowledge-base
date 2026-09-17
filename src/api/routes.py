@@ -18,7 +18,12 @@ from schema.dto import (
     SearchResponse,
     ServiceMetadata,
 )
-from schema.entry_dto import ENTRY_ERROR_CODES, Entry, RevisionSummary
+from schema.entry_dto import (
+    ENTRY_ERROR_CODES,
+    Entry,
+    EntrySearchResult,
+    RevisionSummary,
+)
 
 router = APIRouter()
 
@@ -206,6 +211,22 @@ async def create_entry(payload: dict, request: Request):
         )
 
     return await _run_entry_write(svc, run)
+
+
+@router.post("/entries/search", response_model=EntrySearchResult,
+             dependencies=[Depends(enforce_bearer)])
+async def search_entries(payload: dict, request: Request):
+    svc = get_entries_service(request)
+    _reject_unknown_fields(payload, ("query", "projects", "all_projects", "type", "limit"))
+
+    def run():
+        return svc.entries.search(
+            query=payload.get("query"), projects=payload.get("projects"),
+            all_projects=payload.get("all_projects", False),
+            type=payload.get("type"), limit=payload.get("limit", 20),
+        )
+
+    return await _run_entry_read(run)
 
 
 @router.get("/entries/{entry_id}", response_model=Entry, dependencies=[Depends(enforce_bearer)])

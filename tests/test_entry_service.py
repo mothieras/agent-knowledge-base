@@ -437,12 +437,14 @@ def test_persistence_across_reopen(tmp_path, clock):
 
 
 def test_fts_rows_maintained_in_transaction(svc, store):
+    from db.entry_store import default_tokenize
+
     e = make_entry(svc, body="hybrid retrieval 混合检索")
     rowid = store._entry_rowid(e.id)
     tokens = store._conn.execute(
         "SELECT tokens FROM entries_fts WHERE rowid = ?", (rowid,)
     ).fetchone()[0]
-    assert tokens == "hybrid retrieval 混 合 检 索"  # 占位分词：ascii 词 + CJK 单字
+    assert tokens == default_tokenize("hybrid retrieval 混合检索")  # 入库与查询同分词器
 
     svc.revise(e.id, expected_revision=1, author="a", body="new body")
     rows = store._conn.execute(
