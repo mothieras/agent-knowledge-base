@@ -1,0 +1,40 @@
+# eval/entries_challenge_contract.yaml — 条目检索挑战集冻结契约（PHASE2 §4.5）
+# 在 FTS5 搜索实现之前冻结（2026-09-17）：种子语料、查询、qrels、门槛。
+# 独立报告，不与 30 题 golden / 40 题检索挑战集混分母；旧评测零改动。
+# 修订需回写 docs/PHASE2.md §9 决策记录。
+
+version: 1
+frozen_date: "2026-09-17"
+tokenizer_decision: "jieba cut_for_search + 小写，空格预分词（入库与查询同一分词器，Q9 主选、T3 实测采定）"
+
+datasets:
+  seed_corpus:
+    path: eval/entries_seed_corpus.jsonl
+    sha256: 3e3a099bb32a7ddf885bdb0cae0d81319d040daef6ba77efc57208e71cf1800e
+    lines: 60
+    role: 种子条目语料（memory/knowledge；29 global + 31 project 跨 rag/deploy/eval/agent/infra/kb；含词面相近的干扰簇）
+  challenge:
+    path: eval/entries_challenge.jsonl
+    sha256: d2fb24ff60c2743c3f567f199cb2f851dc7384e08ea1b9562e655945d610618f
+    lines: 26
+    role: 条目检索查询 + qrels（grade 2 主相关 / 1 次相关）+ search_args（范围/类型）
+    categories: [exact_term(5), paraphrase(6), mixed_lang(5), distractor_dense(2), project_scope(4), all_projects(3), type_filter(1)]
+
+retrieval_binding:
+  implementation: "SQLite FTS5（unicode61 + 空格预分词）+ bm25 排序，禁 embedding/rerank/生成"
+  metrics_cutoff: {recall_at: 5, mrr_at: 10}
+  query_limit: 10
+
+thresholds:
+  recall_at_5: 0.85
+  mrr_at_10: 0.65
+  exact_term_recall_at_5: 1.00
+
+threshold_rationale: |
+  门槛按用途定，不按实现倒推：共享条目检索是 Agent 的上下文入口，漏检即
+  静默丢失记忆，故 recall@5 主门槛取 0.85（26 题宏平均漏检 ≤ ~4 题，把
+  失败预算留给无词面重叠的纯转述题）；mrr@10 ≥ 0.65 对应首位相关平均在
+  top-2 内，排序质量足以支撑 Agent 直接取用前几条。exact_term 类（词面
+  完全命中，4 题）要求 recall@5 = 1.00：词面命中的题失败只可能是分词器
+  或索引缺陷，不是词法检索的能力边界。挑战集为设计语料，查询与目标
+  词面部分重叠（词法检索的适用域）；纯语义改写不设必须命中义务。

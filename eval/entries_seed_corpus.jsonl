@@ -1,0 +1,60 @@
+{"seed_id": "e01", "type": "memory", "scope": {"kind": "global"}, "author": "pi/0.85.1", "body": "用户希望所有项目默认使用中文回复。"}
+{"seed_id": "e02", "type": "memory", "scope": {"kind": "global"}, "author": "pi/0.85.1", "body": "用户不喜欢 YAML 配置，新工具链配置优先 TOML。"}
+{"seed_id": "e03", "type": "memory", "scope": {"kind": "global"}, "author": "pi/0.85.1", "body": "用户要求每次提交前先跑全量测试，测试不过不许合入。"}
+{"seed_id": "e04", "type": "memory", "scope": {"kind": "global"}, "author": "pi/0.85.1", "body": "用户偏好简洁回答：先给结论，需要时再展开细节。"}
+{"seed_id": "e05", "type": "memory", "scope": {"kind": "global"}, "author": "pi/0.85.1", "body": "用户不喜欢惊喜式重构：改行为须先说明方案再动手。"}
+{"seed_id": "e06", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "SQLite WAL 模式允许读写并发；写串行化由 busy_timeout 兜底，超时返回 busy 错误。"}
+{"seed_id": "e07", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "FTS5 的 unicode61 分词器对中文整句只产生单个 token，中文全文检索需入库前做空格预分词，查询侧使用同一分词器。"}
+{"seed_id": "e08", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "ULID 由 48bit 毫秒时间戳加 80bit 随机数构成，字典序即时间序，适合做可排序主键。"}
+{"seed_id": "e09", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "BM25 是词频饱和的词法相关性打分：词频增益随文档长度归一化衰减，idf 提升稀有词权重。"}
+{"seed_id": "e10", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "RRF（倒数排名融合）按 1/(k+rank) 合并多路检索结果，不依赖两路分数的可比性，k 常取 60。"}
+{"seed_id": "e11", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "HyDE 检索技巧：先让模型生成假设性答案，再用假设答案的向量去检索，适合查询与文档措辞脱节的场景。"}
+{"seed_id": "e12", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "父子分块策略：子块用于命中（粒度细、召回高），父块用于取回上下文（完整段落），命中后按 parent_id 回查原文。"}
+{"seed_id": "e13", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "幂等键的通用设计：同键同内容重放原始成功结果，同键异内容返回冲突；键的作用域要全局唯一。"}
+{"seed_id": "e14", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "乐观并发控制：写入携带预期版本号，服务端在单事务内比较后应用，不匹配返回冲突，由调用方整合后重试。"}
+{"seed_id": "e15", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "RFC3339 时间戳统一带时区偏移或 Z 后缀；存储前统一规范化为 UTC，避免字符串比较歧义。"}
+{"seed_id": "e16", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "Python sqlite3 在 isolation_level=None 时进入自动提交模式，事务边界由显式 BEGIN/COMMIT 控制。"}
+{"seed_id": "e17", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "docker 卷挂载 SQLite 文件时须同时考虑 WAL 与 SHM 伴生文件，否则容器重启可能丢失已提交事务。"}
+{"seed_id": "e18", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "pytest 的 tmp_path fixture 为每个测试提供独立临时目录，适合做存储层隔离测试。"}
+{"seed_id": "e19", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "MCP 工具的文本通道与 structuredContent 应承载相同载荷：部分客户端只把文本通道渲染进模型上下文。"}
+{"seed_id": "e20", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "FastAPI 的同步路由函数自动跑在线程池；共享连接的存储层须自带线程安全。"}
+{"seed_id": "e21", "type": "memory", "scope": {"kind": "projects", "projects": ["rag"]}, "author": "pi/0.85.1", "body": "项目 rag 选择 Python 3.12 作为实现语言。"}
+{"seed_id": "e22", "type": "memory", "scope": {"kind": "projects", "projects": ["rag"]}, "author": "pi/0.85.1", "body": "项目 rag 的检索索引用 Qdrant embedded 模式，数据库文件固定在 qdrant_db 目录。"}
+{"seed_id": "e23", "type": "memory", "scope": {"kind": "projects", "projects": ["rag"]}, "author": "pi/0.85.1", "body": "项目 rag 的评测固定 30 题 golden set，检索计分范围 20 条，不得删题或混用分母。"}
+{"seed_id": "e24", "type": "memory", "scope": {"kind": "projects", "projects": ["rag"]}, "author": "pi/0.85.1", "body": "上次服务启动失败，是因为评测进程还占着索引目录；停掉评测进程后恢复正常。"}
+{"seed_id": "e25", "type": "memory", "scope": {"kind": "projects", "projects": ["rag"]}, "author": "pi/0.85.1", "body": "本机 shell 的 SOCKS 代理会让 httpx 报 socksio ImportError；加载 HF 模型的进程要 unset ALL_PROXY 启动。"}
+{"seed_id": "e26", "type": "knowledge", "scope": {"kind": "projects", "projects": ["rag"]}, "author": "claude-code/1.0", "body": "重建 rag 索引前必须先停服务：embedded Qdrant 同目录只允许一个进程持有，并发打开会文件锁冲突。"}
+{"seed_id": "e27", "type": "knowledge", "scope": {"kind": "projects", "projects": ["rag"]}, "author": "claude-code/1.0", "body": "rag 的 sparse 检索用 FastEmbed 的 Qdrant/bm25 模型编码查询，dense 用 Qwen3-Embedding-0.6B。"}
+{"seed_id": "e28", "type": "knowledge", "scope": {"kind": "projects", "projects": ["rag"]}, "author": "claude-code/1.0", "body": "rag 评测的挑战集纪律：改检索策略前先冻结挑战集、qrels 与门槛，再消融对照，没跑 eval 不算落地。"}
+{"seed_id": "e29", "type": "knowledge", "scope": {"kind": "projects", "projects": ["rag"]}, "author": "claude-code/1.0", "body": "rag 的引用校验规则：evidence_id 必属本次证据集，quote 必须是证据原文的精确子串，失败显式报错不伪造引用。"}
+{"seed_id": "e30", "type": "memory", "scope": {"kind": "projects", "projects": ["deploy"]}, "author": "pi/0.85.1", "body": "deploy 项目约定：服务端口 8000，容器内以非 root 用户运行。"}
+{"seed_id": "e31", "type": "knowledge", "scope": {"kind": "projects", "projects": ["deploy"]}, "author": "claude-code/1.0", "body": "部署本服务须挂载独立数据卷：qdrant_db、parent_store、entries.db 都是运行时数据，不进镜像层。"}
+{"seed_id": "e32", "type": "knowledge", "scope": {"kind": "projects", "projects": ["deploy"]}, "author": "claude-code/1.0", "body": "单 worker 是硬约束：Qdrant embedded 模式下多 worker 会争抢同一索引目录，扩并发前先改存储架构。"}
+{"seed_id": "e33", "type": "memory", "scope": {"kind": "projects", "projects": ["deploy"]}, "author": "pi/0.85.1", "body": "deploy 上次发版回滚，原因是容器内存限制 512MiB 不足以加载 embedding 模型，已调整到 2GiB。"}
+{"seed_id": "e34", "type": "knowledge", "scope": {"kind": "projects", "projects": ["eval"]}, "author": "claude-code/1.0", "body": "检索指标口径：precision 是 TP/(TP+FP)，recall 是 TP/(TP+应检出)，MRR 是首个相关结果排名倒数的均值。"}
+{"seed_id": "e35", "type": "knowledge", "scope": {"kind": "projects", "projects": ["eval"]}, "author": "claude-code/1.0", "body": "评测报告必须绑定实际代码 commit、index_id 与模型参数，否则不可复现不可比较。"}
+{"seed_id": "e36", "type": "memory", "scope": {"kind": "projects", "projects": ["eval"]}, "author": "pi/0.85.1", "body": "eval 项目的规模实测在独立快照上跑，不污染质量索引，用 PARENT_STORE_PATH 环境变量覆盖路径。"}
+{"seed_id": "e37", "type": "knowledge", "scope": {"kind": "projects", "projects": ["agent"]}, "author": "claude-code/1.0", "body": "LangGraph 的 checkpointer 复用时要按 request_id 隔离并清理 thread_id，禁止跨请求复用同一实例。"}
+{"seed_id": "e38", "type": "knowledge", "scope": {"kind": "projects", "projects": ["agent"]}, "author": "claude-code/1.0", "body": "Agent 记忆的写入时机：任务结束或关键决策点，记录事实、偏好与方法，不记录一次性过程状态。"}
+{"seed_id": "e39", "type": "memory", "scope": {"kind": "projects", "projects": ["agent"]}, "author": "pi/0.85.1", "body": "agent 项目对接的客户端是 Pi 0.85.1 加 pi-mcp-adapter 2.32.1，只渲染 TextContent 进模型上下文。"}
+{"seed_id": "e40", "type": "knowledge", "scope": {"kind": "projects", "projects": ["agent"]}, "author": "claude-code/1.0", "body": "工具描述就是 Agent 的接口文档：写清何时用、参数语义与错误处理，比 README 更靠近调用点。"}
+{"seed_id": "e41", "type": "memory", "scope": {"kind": "projects", "projects": ["infra"]}, "author": "pi/0.85.1", "body": "infra 的监控用 Prometheus，告警规则按服务分组维护。"}
+{"seed_id": "e42", "type": "knowledge", "scope": {"kind": "projects", "projects": ["infra"]}, "author": "claude-code/1.0", "body": "Prometheus 的 rate() 须配合采集窗口使用，5m 窗口对突发流量变化太钝。"}
+{"seed_id": "e43", "type": "memory", "scope": {"kind": "projects", "projects": ["kb"]}, "author": "pi/0.85.1", "body": "kb 项目的前端用 Vue 3，状态管理选了 Pinia。"}
+{"seed_id": "e44", "type": "knowledge", "scope": {"kind": "projects", "projects": ["kb"]}, "author": "claude-code/1.0", "body": "Vue 组合式 API 用 ref 与 reactive 表达响应式状态，watch 处理副作用。"}
+{"seed_id": "e45", "type": "memory", "scope": {"kind": "global"}, "author": "pi/0.85.1", "body": "用户家里养的猫叫 Turing，不吃罐头里的南瓜。"}
+{"seed_id": "e46", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "图灵机由无限纸带、读写头与状态转移函数构成，是可计算性理论的基准模型。"}
+{"seed_id": "e47", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "内存泄漏排查：先看常驻内存趋势，再取堆快照对比增长对象，Python 侧用 tracemalloc。"}
+{"seed_id": "e48", "type": "memory", "scope": {"kind": "projects", "projects": ["infra"]}, "author": "pi/0.85.1", "body": "infra 上周给服务器换了内存条，容量从 64GiB 升到 128GiB。"}
+{"seed_id": "e49", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "正则的贪婪匹配在长文本回溯时可能灾难性变慢，可用原子组或占有优先量词规避。"}
+{"seed_id": "e50", "type": "knowledge", "scope": {"kind": "projects", "projects": ["rag"]}, "author": "claude-code/1.0", "body": "rag 的 chunk 参数：子块 500 字符、重叠 100，父块 2000 到 4000 字符。"}
+{"seed_id": "e51", "type": "memory", "scope": {"kind": "global"}, "author": "pi/0.85.1", "body": "用户要求周报在每周五 17:00 前发出。"}
+{"seed_id": "e52", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "周报的结构：进展、风险、下周计划各三行以内，读者是管理层。"}
+{"seed_id": "e53", "type": "memory", "scope": {"kind": "projects", "projects": ["deploy"]}, "author": "pi/0.85.1", "body": "deploy 的 staging 环境域名是 staging.internal，走内网 DNS 解析。"}
+{"seed_id": "e54", "type": "knowledge", "scope": {"kind": "projects", "projects": ["eval"]}, "author": "claude-code/1.0", "body": "golden set 与 challenge set 是两个分母：回归看 golden，新策略对照看 challenge，不混算指标。"}
+{"seed_id": "e55", "type": "knowledge", "scope": {"kind": "projects", "projects": ["agent"]}, "author": "claude-code/1.0", "body": "MCP 的 Streamable HTTP transport 用单一 /mcp 端点，会话生命周期由 session manager 管理。"}
+{"seed_id": "e56", "type": "memory", "scope": {"kind": "projects", "projects": ["rag"]}, "author": "pi/0.85.1", "body": "rag 的语料固定在 mothieras/all-in-rag@04b8ea2，同步脚本校验 SHA-256 并清理清单外残留。"}
+{"seed_id": "e57", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "git 的 rebase 会重写提交历史，共享分支上优先用 merge 保守合并。"}
+{"seed_id": "e58", "type": "memory", "scope": {"kind": "global"}, "author": "pi/0.85.1", "body": "用户的时区是 UTC+8，会议安排避开 12:00 到 14:00 的午休段。"}
+{"seed_id": "e59", "type": "knowledge", "scope": {"kind": "global"}, "author": "claude-code/1.0", "body": "向量检索的余弦相似度只看方向不看模长，归一化后等价于点积。"}
+{"seed_id": "e60", "type": "memory", "scope": {"kind": "global"}, "author": "pi/0.85.1", "body": "用户的备份数据在每周日 03:00 自动快照到冷存储。"}
