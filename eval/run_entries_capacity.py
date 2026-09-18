@@ -238,7 +238,8 @@ def search_latency(client: httpx.Client) -> tuple[dict, list[dict], list[dict]]:
            for t in TOPICS[:20]]
         + [{"kind": "common", "query": f"{t} 实践要点"}
            for t in TOPICS[:10]]
-        + [{"kind": "miss", "query": f"未命中干扰词 {k} qqzz"}
+        # 未命中题只用全部条目都不含的乱码 token（数字会撞种子正文的要点/边界编号）
+        + [{"kind": "miss", "query": f"qqzzww{k} xxyzzy vvuu{k}sq"}
            for k in range(30)]
     )
     rows = []
