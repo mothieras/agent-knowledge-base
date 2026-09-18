@@ -168,7 +168,7 @@ def create_mcp_server(include_ask: bool = True) -> MCPServer:
         type: Annotated[str, "条目类型：memory | knowledge"],
         body: Annotated[str, "条目正文（非空，≤64KiB）"],
         author: Annotated[str, "自报作者，约定「客户端/版本」如 pi/0.85.1（记录用途，非强身份）"],
-        scope: Annotated[dict | None, '{"kind":"global"} 或 {"kind":"projects","projects":[标签1-16]}；缺省全局'] = None,
+        scope: Annotated[dict, '必填：{"kind":"global"} 或 {"kind":"projects","projects":[标签1-16]}；无默认值，全局须显式声明'],
         expires_at: Annotated[str | None, "有效期 RFC3339（可选，查询时判定到期）"] = None,
         source: Annotated[dict | None, '{"url?","note?"} 来源引用；未知来源传 null，不伪造'] = None,
         idempotency_key: Annotated[str | None, "幂等键：同键同请求重试返回原结果"] = None,
@@ -181,8 +181,7 @@ def create_mcp_server(include_ask: bool = True) -> MCPServer:
         svc: AppService = ctx.request_context.lifespan_context
         try:
             entry = svc.entries.create(
-                type=type, body=body, author=author,
-                scope=scope or {"kind": "global"},
+                type=type, body=body, author=author, scope=scope,
                 expires_at=expires_at, source=source,
                 idempotency_key=idempotency_key,
             )

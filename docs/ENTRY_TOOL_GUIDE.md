@@ -44,12 +44,12 @@
 
 ## 3. 新增（save_entry / POST /entries）
 
-必填：`type`、`body`（非空，≤64 KiB，唯一正文字段，无 title）、`author`。
-可选：`scope`、`expires_at`、`source`、`idempotency_key`。
+必填：`type`、`body`（非空，≤64 KiB，唯一正文字段，无 title）、`scope`、`author`。
+可选：`expires_at`、`source`、`idempotency_key`。
 
-**scope 选择**：
+**scope 选择**（无默认值，全局须显式声明）：
 
-- 默认 `{kind: global}`：与任何项目无关的通用内容（用户全局偏好、通用方法）。
+- `{kind: global}`：与任何项目无关的通用内容（用户全局偏好、通用方法）。
 - `{kind: projects, projects: [标签]}`：1–16 个项目标签；标签 trim+小写后须匹配
   `^[a-z0-9][a-z0-9_-]{0,63}$`，非法返回 `invalid_project`（不静默改写）。
   项目标签无需注册，「不存在的项目」不是错误。

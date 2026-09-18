@@ -45,7 +45,8 @@ def call(server, ctx, name, args):
 
 
 def save(server, ctx, **kw):
-    args = {"type": "memory", "body": "用户偏好：默认中文回复。", "author": "pi/0.85.1"}
+    args = {"type": "memory", "body": "用户偏好：默认中文回复。", "author": "pi/0.85.1",
+            "scope": {"kind": "global"}}
     args.update(kw)
     return call(server, ctx, "save_entry", args)
 
