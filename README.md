@@ -10,7 +10,7 @@
 
 > **状态：活跃原型，面向本地部署。** 鉴权可选（Bearer）；未内置限流与 TLS，不建议直接暴露公网。
 
-后续产品方向与建设顺序见 [PRODUCT 总纲](PRODUCT.md) 与 [ROADMAP 路线图](ROADMAP.md)：先优化现有文档入库，再建设单用户、多 Agent 共享的 Memory / Knowledge 服务。条目写入、协作修订和无模型全文检索尚未实现，本页功能与评测描述仍对应当前只读检索演示版。
+后续产品方向与建设顺序见 [PRODUCT 总纲](PRODUCT.md) 与 [ROADMAP 路线图](ROADMAP.md)：先优化现有文档入库，再建设单用户、多 Agent 共享的 Memory / Knowledge 服务。条目服务核心（写入、协作修订、无模型全文检索、生命周期与有效期）已交付并接入 HTTP/MCP；服务级容量实测与真实 Agent 接入验证仍在阶段 2 任务序列中。
 
 该方向与 Codex、Claude Code 等调用方的原生记忆配合使用，重点补足不同 Agent 之间的内容共享、外部资料与积累条目的关联，以及共享内容的持续修订与证据回查。调用方通过公开工具接入，无需服务接管其内部记忆文件；这些目标流程的实际收益仍待验证。
 
@@ -22,7 +22,7 @@ LLM Agent 的答案质量取决于它引用的事实是否可信。与其让模�
 
 - **Agent 接地**（重心）：外部 MCP 客户端（Pi 等）把 search/get_context 当工具，取带 span/版本的证据，用自己的模型回答
 - **问答委托**：应用调 ask_knowledge 得 decision（answered/澄清/拒答）与机械校验过的引用；rag/agentic 双模式同时是接地质量与编排成本的测量仪
-- **多 Agent 共享 Memory / Knowledge**（规划中）：不同 Agent 共同保存、取用和修订事实与知识，并回查资料依据；单用户共享读写，保留作者与修订历史，第一版不做私有分区，见 [PRODUCT 总纲](PRODUCT.md)
+- **多 Agent 共享 Memory / Knowledge**：不同 Agent 共同保存、取用和修订事实与知识，并回查资料依据；单用户共享读写，保留作者与修订历史，第一版不做私有分区，见 [PRODUCT 总纲](PRODUCT.md)
 
 ## Features
 
