@@ -6,9 +6,9 @@
 
 上层只依赖下层的稳定接口,依赖方向保持单向:
 
-- **L0** `db/` + 检索层:Qdrant hybrid 检索、parent store、快照;分词 BM25 / RRF / rerank、版本过滤都在这层演进
+- **L0** `db/` + 检索层:Qdrant dense+sparse hybrid 检索、parent store、快照;SQLite 条目库(FTS5 + jieba 空格预分词)也在这层。版本过滤、检索消融等能力在检索层内演进
 - **L1** `rag_agent/`:普通 RAG 单图与双图的编排、decision 与证据约束
-- **L2** `core/`:bootstrap、资源/运行生命周期、检索与可选问答的公开应用接口
+- **L2** `core/`:bootstrap、资源/运行生命周期、检索/问答/条目服务的公开应用接口
 - **L3** `api/`:HTTP(FastAPI/SSE)与 MCP 的稳定薄前——只调用 L2 公共接口,不 import `db/` / `rag_agent/` 内部
 - **L4** `client/` + `ui/`:HTTP/SSE 客户端与 Gradio 薄映射;外部 MCP 客户端同样只消费协议
 
@@ -20,9 +20,11 @@
 
 - **受治理 fixture**:`data/fixtures/` 下项目自有的虚构政策文档(两对 active/expired 版本),独立 manifest 治理,不参与第三方语料的 SHA 同步。入库进同一 collection,使版本冲突评测在混合语料上进行;`expected_hits` 注记是检索挑战集 qrels 素材。
 
-## 产品术语（检索优先演示版，已实现）
+## 产品术语（已实现能力）
 
 范围与完成状态以根 [README](../README.md) 为准。
+
+### 检索优先演示版
 
 - **直接检索**：无需生成模型的 search/原文回查；生成由调用者决定。不是“单图问答”的别名。
 - **普通 RAG / `rag`**：固定检索→组织上下文→生成的 LangGraph 单图，不做 Agent 工具循环。
@@ -31,3 +33,14 @@
 - **证据标识 / `evidence_id`**：绑定快照与准确原文片段的公开回查标识；旧快照缺失时不能解析到同名新内容。
 - **单次 decision**：`answered / clarification_required / refused`，都结束本次请求；澄清不是服务器暂停等待同 thread 恢复。
 - **检索优先演示版**：受控只读资料库＋检索/问答/接入评测；知识库本体（身份、公私分区、协作写入、文档历史）明确顺延。
+
+### 共享条目服务（阶段 2 已交付）
+
+- **共享条目 / `entry`**：Memory/Knowledge 类型的持久记录。稳定 ID `entry_`+ULID（类型不编码进 ID）；`body` 唯一正文（≤64 KiB）；`scope`、`author`、`revision`、`status`、`expires_at`、`source`。写入、修订、搜索、生命周期经 HTTP/MCP 公开工具操作。
+- **项目标签 / scope**：`{kind: global}` 或 `{kind: projects, projects:[1..16 个规范化标签]}`。组织与检索维度，不是权限边界；标签无需注册。
+- **修订 / revision**：一切变更（含生命周期）revision+1，历史为全量快照；变更携带 `expected_revision`，单事务内比较并应用，不匹配 409 附当前条目。
+- **生命周期**：`active / archived / deleted` 三态软转换（archive/unarchive/delete/restore）；正文与历史全保留，无永久清除；退出默认搜索，显式回查可见。
+- **到期 / `expires_at`**：查询时判定（服务端 UTC，无后台任务）；到期退出默认搜索，按 ID/修订回查保留到期信息；访问不续期。
+- **幂等键 / `idempotency_key`**：全局唯一、持久保留；同键同内容重放原结果，同键异内容 409。
+- **无模型全文搜索**：SQLite FTS5 + 空格预分词（jieba）+ bm25；独立于 Qdrant/embedding/生成模型，写入与索引同事务提交。
+- **author**：必填自报字符串（约定「客户端/版本」），与部署级单 Bearer 凭据不绑定，非强身份。

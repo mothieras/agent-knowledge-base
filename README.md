@@ -6,7 +6,7 @@
 [![Code License: MIT](https://img.shields.io/badge/code-MIT-blue.svg)](LICENSE)
 [![Corpus License: CC BY-NC-SA 4.0](https://img.shields.io/badge/corpus-CC%20BY--NC--SA%204.0-lightgrey.svg)](data/THIRD_PARTY_NOTICES.md)
 
-自托管、给 Agent 用的知识库服务：hybrid 检索、可精确回查的证据（span/版本/内容哈希）、HTTP 与 MCP 只读接入，以及 rag/agentic 双模式单次问答。入库与证据链路由 manifest 驱动，语料可整体替换；仓库内置一份受治理的中文 RAG 示例语料与配套评测集，本页评测结果均在该示例语料上测得。
+自托管、给 Agent 用的知识库服务：hybrid 检索、可精确回查的证据（span/版本/内容哈希）、HTTP 与 MCP 接入（只读检索/证据 + 共享条目读写），以及 rag/agentic 双模式单次问答。入库与证据链路由 manifest 驱动，语料可整体替换；仓库内置一份受治理的中文 RAG 示例语料与配套评测集，本页评测结果均在该示例语料上测得。
 
 > **状态：活跃原型，面向本地部署。** 鉴权可选（Bearer）；未内置限流与 TLS，不建议直接暴露公网。
 
@@ -80,6 +80,7 @@ docker build -t agent-kb-demo .
 docker run -d --name agent-kb -p 8000:8000 \
   -v "$PWD/qdrant_db:/app/qdrant_db" \
   -v "$PWD/parent_store:/app/parent_store" \
+  -v "$PWD/entries.db:/app/entries.db" \
   -v "$HOME/.cache/huggingface:/app/.cache/huggingface" \
   -v "$PWD/.fastembed_cache:/app/.cache/fastembed" \
   -e HF_HUB_OFFLINE=1 \
@@ -87,7 +88,7 @@ docker run -d --name agent-kb -p 8000:8000 \
   agent-kb-demo
 ```
 
-- 入口脚本发现无索引快照时先入库再启动（需联网下载嵌入模型，建议挂载既有索引/缓存卷）；镜像约 7 GB（含 torch/CUDA 运行库）
+- 入口脚本发现无索引快照时先入库再启动（需联网下载嵌入模型，建议挂载既有索引/缓存卷）；镜像约 7 GB（含 torch/CUDA 运行库）；`entries.db` 挂载卷保证条目数据跨容器重建保留
 - `DEMO_API_TOKEN` 设置后 HTTP 与 MCP 统一要求 `Authorization: Bearer <token>`（无/错凭据 401）；不设置则本地免鉴权
 
 ## MCP Integration
@@ -166,42 +167,43 @@ L4  Gradio UI
         v
     AgentClient (HTTP / SSE)
         |
-L3  FastAPI  /health /info /search /evidence /invoke /stream · /mcp
+L3  FastAPI  /health /info /search /evidence /invoke /stream · /entries · /mcp
         |
-L2  AppService  search/read_evidence + AnswerService  rag/agentic 单次问答
+L2  AppService  search/read_evidence/entries + AnswerService  rag/agentic 单次问答
         |
 L1  LangGraph  rag 单图 · agentic 主图 + 检索子图
         |
-L0  Qdrant hybrid retrieval + parent store + corpus
+L0  Qdrant hybrid retrieval + parent store + corpus · SQLite 条目库（FTS5 + jieba）
 ```
 
-依赖方向保持单向：UI 只依赖 client；API 层只通过 L2 公共接口使用检索与问答，不 import `db/` / `rag_agent/` 内部；检索与 Agent 内部可以继续演进而不改变 HTTP 协议。
+依赖方向保持单向：UI 只依赖 client；API 层只通过 L2 公共接口使用检索、问答与条目服务，不 import `db/` / `rag_agent/` 内部；检索与 Agent 内部可以继续演进而不改变 HTTP 协议。
 
 关键设计决策：
 
 - **单次 decision 协议**：三种 decision 皆为终态，单次请求语义贯穿 HTTP / SSE / MCP，服务无会话状态
 - **引用机械校验**（`rag_agent/validation.py`）：evidence_id 必属本次实际取得的证据集合，quote 必须是证据原文精确子串，span 由 quote 位置推导并绑定快照；失败在预算内修复一次，仍失败返回 `result_validation_failed`，不伪造引用、不冒充正常拒答
 - **类型化 `RetrievalHit` 契约**（`db/retrieval.py`）：命中作为对象流经 AgentState → events → eval，全程无字符串解析；`Retriever` Protocol 由 `QdrantRetriever`（prod）与 `InMemoryRetriever`（test）两个适配器坐实
+- **条目服务**（`db/entry_store.py` + `core/entry_service.py`）：SQLite WAL 单事务并发纪律（`expected_revision` 409 附当前条目）、FTS5 + jieba 预分词无模型全文搜索、软生命周期与查询时到期判定
 - **manifest 语料治理**：每篇文档登记 `source_url` / `sha256` / `license` / `topic` / 版本，同步采用镜像语义清理清单外残留
 
 ```text
 src/
   api/             FastAPI 路由、SSE 序列化、MCP 工具与鉴权
   client/          HTTP/SSE 客户端
-  core/            AppService composition、检索/问答服务、预算与 usage
-  db/              Qdrant、parent store、快照与证据存储
+  core/            AppService composition、检索/问答/条目服务、预算与 usage
+  db/              Qdrant、parent store、快照、证据存储与 SQLite 条目库
   rag_agent/       rag 单图、agentic 双图、节点、引用校验
   schema/          HTTP/MCP 共用 DTO 与 SSE event schemas
   ui/              Gradio 薄客户端
 data/              受治理示例语料、manifest 与版本 fixture
 eval/              golden set、挑战集、metrics、runner 和 reports
-tests/             API/schema/graph/validation 测试
-docs/              架构：分层依赖规则与领域词汇（ARCHITECTURE.md）
+tests/             API/schema/graph/validation/entry 测试
+docs/              架构：分层依赖规则与领域词汇（ARCHITECTURE.md）、条目接入指南（ENTRY_TOOL_GUIDE.md）
 ```
 
 分层规则与领域词汇详见 [ARCHITECTURE](docs/ARCHITECTURE.md)。
 
-测试：`python -m pytest tests/`（本地实测 119 passed / 0 skipped，含 4 项真实索引集成测试；stub 隔离真实 LLM 与 Qdrant，覆盖 schemas、decision 协议、引用校验、跨请求状态隔离、检索路径与 chunker span、fixture 静态契约、ingest 样例集 Level A 管道验证与入库终态分类；无本地索引时 4 项集成测试自动跳过）。CI 在 push/PR 时执行 compile 检查 + 全量 pytest。
+测试：`python -m pytest tests/`（本地实测 213 passed / 0 skipped，含 4 项真实索引集成测试；stub 隔离真实 LLM 与 Qdrant，覆盖 schemas、decision 协议、引用校验、跨请求状态隔离、检索路径与 chunker span、fixture 静态契约、ingest 样例集 Level A 管道验证与入库终态分类、条目存储/契约/搜索/生命周期/到期与并发；无本地索引时 4 项集成测试自动跳过）。CI 在 push/PR 时执行 compile 检查 + 全量 pytest。
 
 ## API
 
@@ -251,13 +253,13 @@ usage = input/output tokens + estimated cost + model calls
 
 ## Background & Attribution
 
-本项目脱胎于开源 LangGraph 教学项目 [agentic-rag-for-dummies](https://github.com/GiovanniPasq/agentic-rag-for-dummies)，不把"重写框架"当目标，而是模拟更常见的工程任务：接手一个可运行的开源底座，把它改造成能够测量、能够通过 API 集成的知识库服务。如今两者已是两套系统：底座是 40 文件的教学 demo，本仓库是 157 文件的服务——132 个文件为本项目新增，约 20 个沿上游模块演进的文件集中在 LangGraph 双图骨架与检索基础设施（逐项对照见下表）。
+本项目脱胎于开源 LangGraph 教学项目 [agentic-rag-for-dummies](https://github.com/GiovanniPasq/agentic-rag-for-dummies)，不把"重写框架"当目标，而是模拟更常见的工程任务：接手一个可运行的开源底座，把它改造成能够测量、能够通过 API 集成的知识库服务。如今两者已是两套系统：底座是 40 文件的教学 demo，本仓库共 197 个受版本控制文件（代码/评测/文档 144 个，受治理语料 53 个；逐项对照见下表）。
 
 | 领域 | 上游底座 | 本项目的增量 |
 |---|---|---|
 | Agent 编排 | LangGraph 主图/子图、查询改写、HITL 澄清、并行子问题、上下文压缩 | DeepSeek JSON mode 适配；单次化：固定 RAG 单图 + 双图单次 decision 协议、共享请求预算、引用机械校验与一次修复 |
 | 检索 | 父子分块、Qdrant dense + sparse hybrid retrieval、文件型 parent store | 示例中文 RAG 语料、固定 revision 与哈希校验、来源 metadata、检索 recorder 与分维度评测 |
-| 应用入口 | Gradio 教学应用 | FastAPI `/search` `/evidence` `/invoke` `/stream`、MCP 只读+问答工具、独立 HTTP/SSE client；Gradio 改为薄客户端 |
+| 应用入口 | Gradio 教学应用 | FastAPI `/search` `/evidence` `/invoke` `/stream` `/entries`、MCP 检索+问答+条目工具、独立 HTTP/SSE client；Gradio 改为薄客户端 |
 | 评测 | — | 30 条领域 golden set、40 题检索挑战集、自动评测 runner、基线报告与 badcase 信号 |
 | 可运行性 | 本地教学项目 | 环境变量驱动的 DeepSeek 配置、生成模型可选的检索服务、smoke script、API/schema/graph 测试 |
 
