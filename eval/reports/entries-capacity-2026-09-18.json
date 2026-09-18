@@ -1,0 +1,698 @@
+{
+ "commit": "0c2101af7484c6d34c925457e600293e53243b85",
+ "seed_seconds": 16.1,
+ "machine": "darwin/arm64",
+ "health": {
+  "status": "ready",
+  "generation": "disabled",
+  "entries": "ready"
+ },
+ "writes": {
+  "n": 123,
+  "busy": 0,
+  "errors": 0,
+  "wall_s": 0.16,
+  "p50_ms": 1.4,
+  "p95_ms": 2.0,
+  "mean_ms": 1.5
+ },
+ "search": {
+  "by_kind": {
+   "rare": {
+    "n": 30,
+    "p50_ms": 1.4,
+    "p95_ms": 2.3,
+    "mean_ms": 1.6
+   },
+   "common": {
+    "n": 30,
+    "p50_ms": 6.9,
+    "p95_ms": 8.0,
+    "mean_ms": 7.1
+   },
+   "miss": {
+    "n": 30,
+    "p50_ms": 0.7,
+    "p95_ms": 0.8,
+    "mean_ms": 0.7
+   }
+  },
+  "p95_ms": 7.7,
+  "p50_ms": 1.4,
+  "mean_ms": 3.1
+ },
+ "search_rows": [
+  {
+   "kind": "rare",
+   "query": "稀有标记0",
+   "latency_ms": 3.8,
+   "returned_k": 20,
+   "top_body": "容量基准条目 0：检索 领域共享记忆，检索 实践要点 0，边界讨论 0。 第 9 轮修订补充 备份 关联。 稀有标记0。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记330",
+   "latency_ms": 2.3,
+   "returned_k": 20,
+   "top_body": "容量基准条目 330：鉴权 领域共享记忆，鉴权 实践要点 39，边界讨论 20。 第 9 轮修订补充 限流 关联。 稀有标记330。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记660",
+   "latency_ms": 1.9,
+   "returned_k": 20,
+   "top_body": "容量基准条目 660：检索 领域共享记忆，检索 实践要点 78，边界讨论 9。 第 9 轮修订补充 备份 关联。 稀有标记660。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记990",
+   "latency_ms": 1.8,
+   "returned_k": 20,
+   "top_body": "容量基准条目 990：鉴权 领域共享记忆，鉴权 实践要点 20，边界讨论 29。 第 9 轮修订补充 限流 关联。 稀有标记990。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记1320",
+   "latency_ms": 1.4,
+   "returned_k": 20,
+   "top_body": "容量基准条目 1320：检索 领域共享记忆，检索 实践要点 59，边界讨论 18。 第 9 轮修订补充 备份 关联。 稀有标记1320。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记1650",
+   "latency_ms": 1.3,
+   "returned_k": 20,
+   "top_body": "容量基准条目 1650：鉴权 领域共享记忆，鉴权 实践要点 1，边界讨论 7。 第 9 轮修订补充 限流 关联。 稀有标记1650。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记1980",
+   "latency_ms": 1.5,
+   "returned_k": 20,
+   "top_body": "容量基准条目 1980：检索 领域共享记忆，检索 实践要点 40，边界讨论 27。 第 9 轮修订补充 备份 关联。 稀有标记1980。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记2310",
+   "latency_ms": 1.2,
+   "returned_k": 20,
+   "top_body": "容量基准条目 2310：鉴权 领域共享记忆，鉴权 实践要点 79，边界讨论 16。 第 9 轮修订补充 限流 关联。 稀有标记2310。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记2640",
+   "latency_ms": 1.2,
+   "returned_k": 20,
+   "top_body": "容量基准条目 2640：检索 领域共享记忆，检索 实践要点 21，边界讨论 5。 第 9 轮修订补充 备份 关联。 稀有标记2640。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记2970",
+   "latency_ms": 1.2,
+   "returned_k": 20,
+   "top_body": "容量基准条目 2970：鉴权 领域共享记忆，鉴权 实践要点 60，边界讨论 25。 第 9 轮修订补充 限流 关联。 稀有标记2970。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记3300",
+   "latency_ms": 1.3,
+   "returned_k": 20,
+   "top_body": "容量基准条目 3300：检索 领域共享记忆，检索 实践要点 2，边界讨论 14。 第 9 轮修订补充 备份 关联。 稀有标记3300。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记3630",
+   "latency_ms": 1.3,
+   "returned_k": 20,
+   "top_body": "容量基准条目 3630：鉴权 领域共享记忆，鉴权 实践要点 41，边界讨论 3。 第 9 轮修订补充 限流 关联。 稀有标记3630。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记3960",
+   "latency_ms": 1.9,
+   "returned_k": 20,
+   "top_body": "容量基准条目 3960：检索 领域共享记忆，检索 实践要点 80，边界讨论 23。 第 9 轮修订补充 备份 关联。 稀有标记3960。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记4290",
+   "latency_ms": 1.4,
+   "returned_k": 20,
+   "top_body": "容量基准条目 4290：鉴权 领域共享记忆，鉴权 实践要点 22，边界讨论 12。 第 9 轮修订补充 限流 关联。 稀有标记4290。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记4620",
+   "latency_ms": 1.4,
+   "returned_k": 20,
+   "top_body": "容量基准条目 4620：检索 领域共享记忆，检索 实践要点 61，边界讨论 1。 第 9 轮修订补充 备份 关联。 稀有标记4620。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记4950",
+   "latency_ms": 1.3,
+   "returned_k": 20,
+   "top_body": "容量基准条目 4950：鉴权 领域共享记忆，鉴权 实践要点 3，边界讨论 21。 第 9 轮修订补充 限流 关联。 稀有标记4950。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记5280",
+   "latency_ms": 2.4,
+   "returned_k": 20,
+   "top_body": "容量基准条目 5280：检索 领域共享记忆，检索 实践要点 42，边界讨论 10。 第 9 轮修订补充 备份 关联。 稀有标记5280。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记5610",
+   "latency_ms": 1.4,
+   "returned_k": 20,
+   "top_body": "容量基准条目 5610：鉴权 领域共享记忆，鉴权 实践要点 81，边界讨论 30。 第 9 轮修订补充 限流 关联。 稀有标记5610。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记5940",
+   "latency_ms": 1.4,
+   "returned_k": 20,
+   "top_body": "容量基准条目 5940：检索 领域共享记忆，检索 实践要点 23，边界讨论 19。 第 9 轮修订补充 备份 关联。 稀有标记5940。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记6270",
+   "latency_ms": 1.4,
+   "returned_k": 20,
+   "top_body": "容量基准条目 6270：鉴权 领域共享记忆，鉴权 实践要点 62，边界讨论 8。 第 9 轮修订补充 限流 关联。 稀有标记6270。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记6600",
+   "latency_ms": 1.3,
+   "returned_k": 20,
+   "top_body": "容量基准条目 6600：检索 领域共享记忆，检索 实践要点 4，边界讨论 28。 第 9 轮修订补充 备份 关联。 稀有标记6600。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记6930",
+   "latency_ms": 1.5,
+   "returned_k": 20,
+   "top_body": "容量基准条目 6930：鉴权 领域共享记忆，鉴权 实践要点 43，边界讨论 17。 第 9 轮修订补充 限流 关联。 稀有标记6930。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记7260",
+   "latency_ms": 1.3,
+   "returned_k": 20,
+   "top_body": "容量基准条目 7260：检索 领域共享记忆，检索 实践要点 82，边界讨论 6。 第 9 轮修订补充 备份 关联。 稀有标记7260。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记7590",
+   "latency_ms": 1.7,
+   "returned_k": 20,
+   "top_body": "容量基准条目 7590：鉴权 领域共享记忆，鉴权 实践要点 24，边界讨论 26。 第 9 轮修订补充 限流 关联。 稀有标记7590。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记7920",
+   "latency_ms": 1.5,
+   "returned_k": 20,
+   "top_body": "容量基准条目 7920：检索 领域共享记忆，检索 实践要点 63，边界讨论 15。 第 9 轮修订补充 备份 关联。 稀有标记7920。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记8250",
+   "latency_ms": 1.5,
+   "returned_k": 20,
+   "top_body": "容量基准条目 8250：鉴权 领域共享记忆，鉴权 实践要点 5，边界讨论 4。 第 9 轮修订补充 限流 关联。 稀有标记8250。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记8580",
+   "latency_ms": 1.4,
+   "returned_k": 20,
+   "top_body": "容量基准条目 8580：检索 领域共享记忆，检索 实践要点 44，边界讨论 24。 第 9 轮修订补充 备份 关联。 稀有标记8580。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记8910",
+   "latency_ms": 1.4,
+   "returned_k": 20,
+   "top_body": "容量基准条目 8910：鉴权 领域共享记忆，鉴权 实践要点 83，边界讨论 13。 第 9 轮修订补充 限流 关联。 稀有标记8910。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记9240",
+   "latency_ms": 1.4,
+   "returned_k": 20,
+   "top_body": "容量基准条目 9240：检索 领域共享记忆，检索 实践要点 25，边界讨论 2。 第 9 轮修订补充 备份 关联。 稀有标记9240。"
+  },
+  {
+   "kind": "rare",
+   "query": "稀有标记9570",
+   "latency_ms": 1.3,
+   "returned_k": 20,
+   "top_body": "容量基准条目 9570：鉴权 领域共享记忆，鉴权 实践要点 64，边界讨论 22。 第 9 轮修订补充 限流 关联。 稀有标记9570。"
+  },
+  {
+   "kind": "common",
+   "query": "检索 领域共享记忆",
+   "latency_ms": 10.2,
+   "returned_k": 20,
+   "top_body": "容量基准条目 0：检索 领域共享记忆，检索 实践要点 0，边界讨论 0。 第 9 轮修订补充 备份 关联。 稀有标记0。"
+  },
+  {
+   "kind": "common",
+   "query": "分块 领域共享记忆",
+   "latency_ms": 7.5,
+   "returned_k": 20,
+   "top_body": "容量基准条目 1：分块 领域共享记忆，分块 实践要点 1，边界讨论 1。 第 9 轮修订补充 鉴权 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "评测 领域共享记忆",
+   "latency_ms": 7.7,
+   "returned_k": 20,
+   "top_body": "容量基准条目 2：评测 领域共享记忆，评测 实践要点 2，边界讨论 2。 第 9 轮修订补充 路由 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "向量化 领域共享记忆",
+   "latency_ms": 7.2,
+   "returned_k": 20,
+   "top_body": "容量基准条目 3：向量化 领域共享记忆，向量化 实践要点 3，边界讨论 3。 第 9 轮修订补充 解析 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "嵌入 领域共享记忆",
+   "latency_ms": 8.0,
+   "returned_k": 20,
+   "top_body": "容量基准条目 4：嵌入 领域共享记忆，嵌入 实践要点 4，边界讨论 4。 第 9 轮修订补充 排序 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "缓存 领域共享记忆",
+   "latency_ms": 7.8,
+   "returned_k": 20,
+   "top_body": "容量基准条目 5：缓存 领域共享记忆，缓存 实践要点 5，边界讨论 5。 第 9 轮修订补充 过滤 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "并发 领域共享记忆",
+   "latency_ms": 7.5,
+   "returned_k": 20,
+   "top_body": "并发写入条目 w1-0：并发写验证正文 10 三版"
+  },
+  {
+   "kind": "common",
+   "query": "事务 领域共享记忆",
+   "latency_ms": 7.7,
+   "returned_k": 20,
+   "top_body": "容量基准条目 7：事务 领域共享记忆，事务 实践要点 7，边界讨论 7。 第 9 轮修订补充 压缩 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "索引 领域共享记忆",
+   "latency_ms": 10.4,
+   "returned_k": 20,
+   "top_body": "容量基准条目 8：索引 领域共享记忆，索引 实践要点 8，边界讨论 8。 第 9 轮修订补充 校验 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "备份 领域共享记忆",
+   "latency_ms": 7.0,
+   "returned_k": 20,
+   "top_body": "容量基准条目 9：备份 领域共享记忆，备份 实践要点 9，边界讨论 9。 第 9 轮修订补充 重试 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "鉴权 领域共享记忆",
+   "latency_ms": 6.7,
+   "returned_k": 20,
+   "top_body": "容量基准条目 10：鉴权 领域共享记忆，鉴权 实践要点 10，边界讨论 10。 第 9 轮修订补充 限流 关联。 稀有标记10。"
+  },
+  {
+   "kind": "common",
+   "query": "路由 领域共享记忆",
+   "latency_ms": 6.9,
+   "returned_k": 20,
+   "top_body": "容量基准条目 11：路由 领域共享记忆，路由 实践要点 11，边界讨论 11。 第 9 轮修订补充 检索 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "解析 领域共享记忆",
+   "latency_ms": 6.7,
+   "returned_k": 20,
+   "top_body": "容量基准条目 12：解析 领域共享记忆，解析 实践要点 12，边界讨论 12。 第 9 轮修订补充 分块 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "排序 领域共享记忆",
+   "latency_ms": 7.0,
+   "returned_k": 20,
+   "top_body": "容量基准条目 13：排序 领域共享记忆，排序 实践要点 13，边界讨论 13。 第 9 轮修订补充 评测 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "过滤 领域共享记忆",
+   "latency_ms": 7.0,
+   "returned_k": 20,
+   "top_body": "容量基准条目 14：过滤 领域共享记忆，过滤 实践要点 14，边界讨论 14。 第 9 轮修订补充 向量化 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "聚合 领域共享记忆",
+   "latency_ms": 7.1,
+   "returned_k": 20,
+   "top_body": "容量基准条目 15：聚合 领域共享记忆，聚合 实践要点 15，边界讨论 15。 第 9 轮修订补充 嵌入 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "压缩 领域共享记忆",
+   "latency_ms": 6.9,
+   "returned_k": 20,
+   "top_body": "容量基准条目 16：压缩 领域共享记忆，压缩 实践要点 16，边界讨论 16。 第 9 轮修订补充 缓存 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "校验 领域共享记忆",
+   "latency_ms": 6.6,
+   "returned_k": 20,
+   "top_body": "容量基准条目 17：校验 领域共享记忆，校验 实践要点 17，边界讨论 17。 第 9 轮修订补充 并发 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "重试 领域共享记忆",
+   "latency_ms": 6.6,
+   "returned_k": 20,
+   "top_body": "容量基准条目 18：重试 领域共享记忆，重试 实践要点 18，边界讨论 18。 第 9 轮修订补充 事务 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "限流 领域共享记忆",
+   "latency_ms": 6.5,
+   "returned_k": 20,
+   "top_body": "容量基准条目 19：限流 领域共享记忆，限流 实践要点 19，边界讨论 19。 第 9 轮修订补充 索引 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "检索 实践要点",
+   "latency_ms": 6.3,
+   "returned_k": 20,
+   "top_body": "容量基准条目 0：检索 领域共享记忆，检索 实践要点 0，边界讨论 0。 第 9 轮修订补充 备份 关联。 稀有标记0。"
+  },
+  {
+   "kind": "common",
+   "query": "分块 实践要点",
+   "latency_ms": 6.5,
+   "returned_k": 20,
+   "top_body": "容量基准条目 1：分块 领域共享记忆，分块 实践要点 1，边界讨论 1。 第 9 轮修订补充 鉴权 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "评测 实践要点",
+   "latency_ms": 6.7,
+   "returned_k": 20,
+   "top_body": "容量基准条目 2：评测 领域共享记忆，评测 实践要点 2，边界讨论 2。 第 9 轮修订补充 路由 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "向量化 实践要点",
+   "latency_ms": 7.0,
+   "returned_k": 20,
+   "top_body": "容量基准条目 3：向量化 领域共享记忆，向量化 实践要点 3，边界讨论 3。 第 9 轮修订补充 解析 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "嵌入 实践要点",
+   "latency_ms": 6.3,
+   "returned_k": 20,
+   "top_body": "容量基准条目 4：嵌入 领域共享记忆，嵌入 实践要点 4，边界讨论 4。 第 9 轮修订补充 排序 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "缓存 实践要点",
+   "latency_ms": 6.3,
+   "returned_k": 20,
+   "top_body": "容量基准条目 5：缓存 领域共享记忆，缓存 实践要点 5，边界讨论 5。 第 9 轮修订补充 过滤 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "并发 实践要点",
+   "latency_ms": 6.3,
+   "returned_k": 20,
+   "top_body": "并发写入条目 w1-0：并发写验证正文 10 三版"
+  },
+  {
+   "kind": "common",
+   "query": "事务 实践要点",
+   "latency_ms": 6.4,
+   "returned_k": 20,
+   "top_body": "容量基准条目 7：事务 领域共享记忆，事务 实践要点 7，边界讨论 7。 第 9 轮修订补充 压缩 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "索引 实践要点",
+   "latency_ms": 6.5,
+   "returned_k": 20,
+   "top_body": "容量基准条目 8：索引 领域共享记忆，索引 实践要点 8，边界讨论 8。 第 9 轮修订补充 校验 关联。"
+  },
+  {
+   "kind": "common",
+   "query": "备份 实践要点",
+   "latency_ms": 6.6,
+   "returned_k": 20,
+   "top_body": "容量基准条目 9：备份 领域共享记忆，备份 实践要点 9，边界讨论 9。 第 9 轮修订补充 重试 关联。"
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww0 xxyzzy vvuu0sq",
+   "latency_ms": 0.9,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww1 xxyzzy vvuu1sq",
+   "latency_ms": 0.7,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww2 xxyzzy vvuu2sq",
+   "latency_ms": 0.7,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww3 xxyzzy vvuu3sq",
+   "latency_ms": 0.7,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww4 xxyzzy vvuu4sq",
+   "latency_ms": 0.8,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww5 xxyzzy vvuu5sq",
+   "latency_ms": 0.6,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww6 xxyzzy vvuu6sq",
+   "latency_ms": 0.6,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww7 xxyzzy vvuu7sq",
+   "latency_ms": 0.6,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww8 xxyzzy vvuu8sq",
+   "latency_ms": 0.7,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww9 xxyzzy vvuu9sq",
+   "latency_ms": 0.6,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww10 xxyzzy vvuu10sq",
+   "latency_ms": 0.6,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww11 xxyzzy vvuu11sq",
+   "latency_ms": 0.6,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww12 xxyzzy vvuu12sq",
+   "latency_ms": 0.6,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww13 xxyzzy vvuu13sq",
+   "latency_ms": 0.6,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww14 xxyzzy vvuu14sq",
+   "latency_ms": 0.7,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww15 xxyzzy vvuu15sq",
+   "latency_ms": 1.1,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww16 xxyzzy vvuu16sq",
+   "latency_ms": 0.8,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww17 xxyzzy vvuu17sq",
+   "latency_ms": 0.7,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww18 xxyzzy vvuu18sq",
+   "latency_ms": 0.7,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww19 xxyzzy vvuu19sq",
+   "latency_ms": 0.7,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww20 xxyzzy vvuu20sq",
+   "latency_ms": 0.6,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww21 xxyzzy vvuu21sq",
+   "latency_ms": 0.7,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww22 xxyzzy vvuu22sq",
+   "latency_ms": 0.6,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww23 xxyzzy vvuu23sq",
+   "latency_ms": 0.7,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww24 xxyzzy vvuu24sq",
+   "latency_ms": 0.6,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww25 xxyzzy vvuu25sq",
+   "latency_ms": 0.7,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww26 xxyzzy vvuu26sq",
+   "latency_ms": 0.6,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww27 xxyzzy vvuu27sq",
+   "latency_ms": 0.6,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww28 xxyzzy vvuu28sq",
+   "latency_ms": 0.6,
+   "returned_k": 0,
+   "top_body": null
+  },
+  {
+   "kind": "miss",
+   "query": "qqzzww29 xxyzzy vvuu29sq",
+   "latency_ms": 0.7,
+   "returned_k": 0,
+   "top_body": null
+  }
+ ],
+ "search_bad": [],
+ "rows": {
+  "entries": 10040,
+  "revisions": 100127,
+  "active": 10040
+ },
+ "restart": {
+  "rows": {
+   "entries": 10040,
+   "revisions": 100127,
+   "active": 10040
+  },
+  "samples_intact": true,
+  "core_intact": true,
+  "rare_search_intact": true
+ },
+ "counters": {
+  "entries": 10040,
+  "revisions": 100127,
+  "active": 10040
+ },
+ "report": "eval/reports/entries-capacity-2026-09-18.md"
+}
