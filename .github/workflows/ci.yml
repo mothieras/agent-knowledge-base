@@ -17,7 +17,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-eval.txt
 
       - name: Compile check
         run: python -m compileall -q rag_agent core api db schema client document_chunker.py config.py utils.py

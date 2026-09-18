@@ -46,7 +46,7 @@ LLM Agent 的答案质量取决于它引用的事实是否可信。与其让模�
 git clone https://github.com/mothieras/agent-knowledge-base.git
 cd agent-knowledge-base
 python3 -m venv .venv && source .venv/bin/activate
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt          # 仅跑服务；含评测/UI 的完整环境装 requirements-eval.txt
 ```
 
 （可选）配置生成模型——不配置也能完整使用检索与证据回查：
@@ -88,7 +88,7 @@ docker run -d --name agent-kb -p 8000:8000 \
   agent-kb-demo
 ```
 
-- 入口脚本发现无索引快照时先入库再启动（需联网下载嵌入模型，建议挂载既有索引/缓存卷）；镜像约 7 GB（含 torch/CUDA 运行库）；`entries.db` 挂载卷保证条目数据跨容器重建保留
+- 入口脚本发现无索引快照时先入库再启动（需联网下载嵌入模型，建议挂载既有索引/缓存卷）；镜像约 1.7 GB（CPU-only torch，不含 CUDA）；`entries.db` 挂载卷保证条目数据跨容器重建保留
 - `DEMO_API_TOKEN` 设置后 HTTP 与 MCP 统一要求 `Authorization: Bearer <token>`（无/错凭据 401）；不设置则本地免鉴权
 
 ## MCP Integration

@@ -1,28 +1,23 @@
+# 服务运行时依赖（镜像与本地跑服务只需此文件；torch 由 Dockerfile 单独装 CPU 版）
+# --- 检索 / embedding ---
 fastembed==0.8.0
+sentence-transformers==5.6.1
 # 条目库 FTS5 中文空格预分词（PHASE2 Q9，T3 采定；纯 Python 无模型依赖）
 jieba==0.42.1
-gradio==6.20.0
-httpx==0.28.1
-ipykernel==7.3.0
-# ragas 0.4.3 imports langchain_community.chat_models.vertexai + langchain_community.llms.VertexAI; 0.4.x removed them, so pin 0.3.x — do not upgrade
-langchain-community==0.3.31
+# --- 文档处理 ---
+pymupdf4llm==1.28.0
+tiktoken==0.13.0
+# --- langchain / langgraph ---
 langchain-huggingface==1.2.2
-langchain-ollama==1.1.0
 langchain-openai==1.5.0
 langchain-qdrant==1.1.0
 langchain-text-splitters==1.1.2
 langfuse==4.14.1
 langgraph==1.2.9
-matplotlib==3.11.1
-pymupdf4llm==1.28.0
-pytest==9.1.1
-python-dotenv==1.2.2
-ragas==0.4.3
-seaborn==0.13.2
-sentence-transformers==5.6.1
-tiktoken==0.13.0
 # --- service layer ---
 fastapi==0.141.1
 uvicorn==0.52.3
+httpx==0.28.1
+python-dotenv==1.2.2
 # --- MCP (兼容性验证 pin；2.x 用 MCPServer，勿装 1.x) ---
 mcp==2.1.1

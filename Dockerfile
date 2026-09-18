@@ -4,9 +4,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 依赖层独立于代码变更
+# 依赖层独立于代码变更；torch 先装 CPU 版（服务侧 embedding 只跑 CPU，CUDA 是死重）
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir -r requirements.txt
 
 # 应用与语料（第三方语料许可见 data/THIRD_PARTY_NOTICES.md，不适用 MIT）
 COPY src/ ./src/
