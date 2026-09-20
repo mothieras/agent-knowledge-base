@@ -149,7 +149,7 @@ MCP 端点（Streamable HTTP）：`http://127.0.0.1:8000/mcp`，与 HTTP 共用 
 
 **规模与并发**：100 文档 / 12,098 块合成快照，3 并发 126/126 有效查询，0 错误 0 busy；P50/P95 与峰值资源见[规模实测报告](eval/reports/scale-2026-09-10.md)。
 
-**条目服务**：检索挑战集三门槛全过（recall@5=mrr@10=1.0，契约 sha256 冻结）见[挑战集报告](eval/reports/entries-challenge-2026-09-17.md)；容量/并发/重启实测（1 万 active 条目 / 10 万修订、3 并发写 0 busy、搜索 P95 7.7ms 对 500ms 门槛、SIGTERM 重启数据保留、禁生成模型核心流程全链）见[容量实测报告](eval/reports/entries-capacity-2026-09-18.md)。
+**条目服务**：检索挑战集三门槛全过（recall@5=mrr@10=1.0，契约 sha256 冻结）见[挑战集报告](eval/reports/entries-challenge-2026-09-18.md)；容量/并发/重启实测（1 万 active 条目 / 10 万修订、3 并发写 0 busy、搜索 P95 7.7ms 对 500ms 门槛、SIGTERM 重启数据保留、禁生成模型核心流程全链）见[容量实测报告](eval/reports/entries-capacity-2026-09-18.md)。
 
 运行评测：
 
