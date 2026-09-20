@@ -1,7 +1,7 @@
 # eval/entries_challenge_contract.yaml — 条目检索挑战集冻结契约（PHASE2 §4.5）
 # 在 FTS5 搜索实现之前冻结（2026-09-17）：种子语料、查询、qrels、门槛。
 # 独立报告，不与 30 题 golden / 40 题检索挑战集混分母；旧评测零改动。
-# 修订需回写 docs/PHASE2.md §9 决策记录。
+# 修订需回写 docs/spec/PHASE2.md §9 决策记录。
 
 version: 1
 frozen_date: "2026-09-17"

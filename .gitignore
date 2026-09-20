@@ -15,9 +15,7 @@ eval/ingest_artifacts/
 .commandcode/
 AGENTS.md
 PLAN.md
-docs/PHASE1.md
-docs/PHASE1-IMPL.md
-docs/PHASE2.md
+docs/spec/
 
 ragas_*.csv
 rag_evaluation_*.csv
