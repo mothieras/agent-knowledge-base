@@ -57,8 +57,15 @@
   scope 是组织与检索维度，**不是权限边界**。
 - 修改关联项目 = 修订 scope，受同一并发检查约束。
 
-**source**：`{url?/note?}` 或 `null`（明确未知，不伪造引用）。用户口述、Agent
-推断都记在 note 里说明来源性质。
+**source**：`{url?/note?}` 或 `{url?/note?, document?}` 或 `null`（明确未知，不伪造引用）。
+用户口述、Agent 推断都记在 note 里说明来源性质。
+
+**document**（文档派生条目）：`{doc_id, version, span_start?, span_end?}` 指向文档注册
+表的版本化规范化文本；span 为全文字符区间，缺省 = 全文。写入时服务机械校验引用
+存在且 span 合法（不存在/越界 → `invalid_source`），所以引用顺序是：先
+`resolve_document(source)` 拿 doc_id/最新版本，需要片段时 `read_document` 读窗口
+并用窗口 offset 算 span。文档更新后旧引用仍指向原修订；`list_document_versions`
+可对照最新版本判断来源是否需要复核。
 
 **expires_at**：RFC3339（带时区）。到期由服务在查询时判定：退出默认搜索，
 按 ID/修订仍可回查；访问不续期；到期不是删除，条目仍可修订。
@@ -86,10 +93,22 @@
 
 - 任务开始、遇到相关决策点时：`search_entries` 按 scope 语义搜索——未指定
   范围=仅全局；指定项目=全局+关联项目；恒排除 archived/deleted/expired。
+- 搜索结果里的 `matched` 是命中片段（长条目按分块返回最佳匹配片段与 span，
+  短条目 = 全文；同一条目只返回一次），body 始终完整。
 - 拿到条目要改：先 `get_entry` 读当前修订号再修订；搜索结果里的 revision 就是
   命中时的修订号。
 - 看历史演变、对比「当时怎么记的」：`list_entry_revisions` + 按修订读（HTTP）。
   回查不改变条目，也不受默认过滤影响。
+- 条目带 `source.document` 要核原文：`read_document(doc_id, version)` 取回该版本
+  全文窗口，窗口 offset/total_length 与 content_hash 可复算。
+
+### 从文档提取条目（D6 流程）
+
+1. `search_knowledge` 检索语料拿证据（source/span）
+2. `resolve_document(source)` → doc_id + 最新版本
+3. 需要片段时 `read_document(doc_id, version, offset, limit)` 读原文窗口，用窗口
+   offset + 片段位置算出全文字符 span
+4. `save_entry` 携带 `source.document = {doc_id, version, span_start, span_end}`
 
 ## 7. 幂等（idempotency_key）
 
@@ -114,8 +133,12 @@ author 是记录用途，**不是强身份保证**，不要据此做安全决策
 | 历史列表 | `GET /entries/{id}/revisions` | `list_entry_revisions` |
 | 指定修订快照 | `GET /entries/{id}/revisions/{n}` | （HTTP） |
 | 搜索 | `POST /entries/search` | `search_entries` |
+| 来源解析 | `GET /documents/resolve?source=` | `resolve_document` |
+| 文档版本列表 | `GET /documents/{doc_id}/versions` | `list_document_versions` |
+| 文档窗口回查 | `GET /documents/{doc_id}/versions/{version}` | `read_document` |
 
 错误统一为 `{code, message}`（冲突另含 `current`）；MCP 侧错误载荷为可解析
 JSON（文本通道）。错误码：`invalid_request` 400 · `invalid_project` 400 ·
-`not_found` 404 · `revision_conflict` 409 · `idempotency_conflict` 409 ·
-`entry_deleted` 409 · `invalid_transition` 409 · `busy` 429。
+`invalid_source` 400 · `not_found` 404 · `revision_conflict` 409 ·
+`idempotency_conflict` 409 · `entry_deleted` 409 · `invalid_transition` 409 ·
+`busy` 429。

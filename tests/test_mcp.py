@@ -52,11 +52,12 @@ def mcp_ctx_gen():
 def test_tools_registered_without_generation(mcp_server):
     tools = asyncio.run(mcp_server.list_tools())
     names = {t.name for t in tools}
-    # 未启用生成能力时不发布 ask_knowledge；条目工具（PHASE2 T2）常驻
+    # 未启用生成能力时不发布 ask_knowledge；条目工具（PHASE2 T2）与文档工具（D6）常驻
     assert names == {
         "search_knowledge", "get_context",
         "save_entry", "get_entry", "revise_entry", "entry_lifecycle", "list_entry_revisions",
         "search_entries",
+        "resolve_document", "list_document_versions", "read_document",
     }
     by_name = {t.name: t for t in tools}
     assert by_name["search_knowledge"].output_schema is not None
@@ -69,6 +70,7 @@ def test_ask_tool_published_when_generation_enabled(mcp_server_with_ask):
         "search_knowledge", "get_context", "ask_knowledge",
         "save_entry", "get_entry", "revise_entry", "entry_lifecycle", "list_entry_revisions",
         "search_entries",
+        "resolve_document", "list_document_versions", "read_document",
     }
     assert {t.name: t for t in tools}["ask_knowledge"].output_schema is not None
 

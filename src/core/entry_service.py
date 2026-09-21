@@ -15,8 +15,10 @@ from typing import Callable
 
 from db.entry_store import EntryStore
 from schema.entry_dto import (
+    DocRef,
     Entry,
     EntrySearchResult,
+    MatchedChunk,
     RevisionSummary,
     Scope,
     SourceRef,
@@ -147,21 +149,63 @@ def _validate_author(value) -> str:
     return value
 
 
-def _validate_source(value) -> SourceRef | None:
+def _validate_source(value, doc_store) -> SourceRef | None:
     if value is None:
         return None
     if not isinstance(value, dict):
-        raise EntryServiceError("invalid_request", "source 须为 null 或 {url?, note?}")
-    extra = set(value) - {"url", "note"}
+        raise EntryServiceError("invalid_request", "source 须为 null 或 {url?, note?, document?}")
+    extra = set(value) - {"url", "note", "document"}
     if extra:
         raise EntryServiceError("invalid_request", f"source 含未知字段: {sorted(extra)}")
     url, note = value.get("url"), value.get("note")
     for k, v in (("url", url), ("note", note)):
         if v is not None and (not isinstance(v, str) or not v.strip()):
             raise EntryServiceError("invalid_request", f"source.{k} 须为非空字符串或省略")
-    if not (url or note):
-        raise EntryServiceError("invalid_request", "source 须含 url 或 note（未知来源用 null，不伪造引用）")
-    return SourceRef(url=url, note=note)
+    if not (url or note or value.get("document")):
+        raise EntryServiceError(
+            "invalid_request", "source 须含 url/note/document（未知来源用 null，不伪造引用）"
+        )
+    document = (
+        _validate_doc_ref(value["document"], doc_store)
+        if value.get("document") is not None else None
+    )
+    return SourceRef(url=url, note=note, document=document)
+
+
+def _validate_doc_ref(value, doc_store) -> DocRef:
+    """source.document（D6/PHASE2-T67 §4.2）：机械校验引用存在与 span 合法。"""
+    if not isinstance(value, dict):
+        raise EntryServiceError("invalid_source", "source.document 须为对象")
+    extra = set(value) - {"doc_id", "version", "span_start", "span_end"}
+    if extra:
+        raise EntryServiceError("invalid_source", f"source.document 含未知字段: {sorted(extra)}")
+    doc_id, version = value.get("doc_id"), value.get("version")
+    if not isinstance(doc_id, str) or not doc_id.strip():
+        raise EntryServiceError("invalid_source", "source.document.doc_id 必填且非空")
+    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+        raise EntryServiceError("invalid_source", f"source.document.version 须为正整数: {version!r}")
+    span_start, span_end = value.get("span_start"), value.get("span_end")
+    if (span_start is None) != (span_end is None):
+        raise EntryServiceError("invalid_source", "source.document span 须成对提供或同时省略")
+    if span_start is not None:
+        for name, v in (("span_start", span_start), ("span_end", span_end)):
+            if not isinstance(v, int) or isinstance(v, bool) or v < 0:
+                raise EntryServiceError("invalid_source", f"source.document.{name} 须为非负整数: {v!r}")
+        if span_start >= span_end:
+            raise EntryServiceError("invalid_source", "source.document span 须满足 0 ≤ span_start < span_end")
+    if doc_store is not None:
+        stored = doc_store.get_version(doc_id, version)
+        if stored is None:
+            raise EntryServiceError(
+                "invalid_source", f"文档版本未注册: {doc_id}#{version}（先离线入库注册）"
+            )
+        if span_start is not None and span_end > stored["total_length"]:
+            raise EntryServiceError(
+                "invalid_source",
+                f"span 越界: {span_end} > 全文长度 {stored['total_length']}",
+            )
+    return DocRef(doc_id=doc_id, version=version,
+                  span_start=span_start, span_end=span_end)
 
 
 def _validate_idempotency_key(value) -> str:
@@ -194,6 +238,12 @@ def _source_dict(ref: SourceRef | dict | None) -> dict | None:
         out["url"] = ref.url
     if ref.note:
         out["note"] = ref.note
+    if ref.document:
+        doc = {"doc_id": ref.document.doc_id, "version": ref.document.version}
+        if ref.document.span_start is not None:
+            doc["span_start"] = ref.document.span_start
+            doc["span_end"] = ref.document.span_end
+        out["document"] = doc
     return out
 
 
@@ -242,9 +292,11 @@ def _scope_dict(scope: Scope) -> dict:
 
 
 class EntryService:
-    def __init__(self, store: EntryStore, *, clock: Callable[[], datetime] | None = None):
+    def __init__(self, store: EntryStore, *, clock: Callable[[], datetime] | None = None,
+                 doc_store=None):
         self._store = store
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._doc_store = doc_store
 
     def _now(self) -> datetime:
         return self._clock()
@@ -275,7 +327,7 @@ class EntryService:
         entry_author = _validate_author(author)
         key = _validate_idempotency_key(idempotency_key) if idempotency_key is not None else None
         expires_norm = _rfc3339(_parse_rfc3339(expires_at)) if expires_at is not None else None
-        source_ref = _validate_source(source)
+        source_ref = _validate_source(source, self._doc_store)
         request_hash = _request_hash("create", {
             "type": type, "body": body, "scope": scope, "author": author,
             "expires_at": expires_at, "source": source,
@@ -343,7 +395,15 @@ class EntryService:
             now_iso=_rfc3339(now), limit=limit,
         )
         results = [_entry_of(_state_of(r), now) for r in rows]
-        return EntrySearchResult(query=query, results=results, returned_k=len(results))
+        matched = {
+            r["id"]: MatchedChunk(
+                chunk_index=r["chunk_index"], span_start=r["span_start"],
+                span_end=r["span_end"], text=r["matched_text"],
+            )
+            for r in rows
+        }
+        return EntrySearchResult(query=query, results=results,
+                                 returned_k=len(results), matched=matched)
 
     def history(self, entry_id: str) -> list[RevisionSummary]:
         self._require_entry(entry_id)
@@ -372,7 +432,7 @@ class EntryService:
         new_expires = (
             _rfc3339(_parse_rfc3339(expires_at)) if expires_at is not None else None
         ) if expires_at is not UNSET else UNSET
-        new_source = _validate_source(source) if source is not UNSET else UNSET
+        new_source = _validate_source(source, self._doc_store) if source is not UNSET else UNSET
 
         payload = {
             "entry_id": entry_id, "expected_revision": expected_revision, "author": author,

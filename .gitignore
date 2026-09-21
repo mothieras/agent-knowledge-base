@@ -11,6 +11,9 @@ parent_store/
 eval/scale_artifacts/
 eval/entries_capacity_artifacts/
 eval/ingest_artifacts/
+eval/agents/runtime/
+eval/agents/artifacts/
+eval/agents/scripts/settings-claude.json
 .superpowers/
 .commandcode/
 AGENTS.md
@@ -24,3 +27,4 @@ rag_evaluation_*.png
 .mcp.json
 .pi/
 entries.db*
+docs.db*

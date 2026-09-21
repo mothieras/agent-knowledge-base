@@ -29,6 +29,7 @@ from core.entry_service import EntryServiceError, UNSET
 from core.retrieval_service import ServiceError
 from schema.dto import AnswerRequest, AnswerResponse, EvidenceWindow, SearchRequest, SearchResponse
 from schema.entry_dto import Entry, EntrySearchResult, RevisionList
+from schema.doc_dto import DocResolveResult, DocumentVersionList, DocumentWindow
 
 EXPECTED_TOKEN = os.environ.get("DEMO_API_TOKEN", "")
 
@@ -83,7 +84,7 @@ def create_mcp_server(include_ask: bool = True) -> MCPServer:
     server = MCPServer(
         "agentic-rag",
         title="Agentic RAG 知识检索",
-        version="0.3.0",
+        version="0.4.0",
         lifespan=_lifespan,
     )
 
@@ -170,7 +171,7 @@ def create_mcp_server(include_ask: bool = True) -> MCPServer:
         author: Annotated[str, "自报作者，约定「客户端/版本」如 pi/0.85.1（记录用途，非强身份）"],
         scope: Annotated[dict, '必填：{"kind":"global"} 或 {"kind":"projects","projects":[标签1-16]}；无默认值，全局须显式声明'],
         expires_at: Annotated[str | None, "有效期 RFC3339（可选，查询时判定到期）"] = None,
-        source: Annotated[dict | None, '{"url?","note?"} 来源引用；未知来源传 null，不伪造'] = None,
+        source: Annotated[dict | None, '{"url?","note?","document?"} 来源引用；document={"doc_id","version","span_start?","span_end?"} 指向文档注册表版本；未知来源传 null，不伪造'] = None,
         idempotency_key: Annotated[str | None, "幂等键：同键同请求重试返回原结果"] = None,
     ) -> Annotated[CallToolResult, Entry]:
         """保存一条共享 Memory/Knowledge 条目（revision=1）。
@@ -289,6 +290,61 @@ def create_mcp_server(include_ask: bool = True) -> MCPServer:
         except EntryServiceError as exc:
             raise _entry_tool_error(exc) from exc
         return _entry_result(result)
+
+    # --- 文档来源回查工具（D6/PHASE2-T67 §4.4） ---
+
+    @server.tool(structured_output=True)
+    async def resolve_document(
+        ctx: Context[Any, Any],
+        source: Annotated[str, "文档 source 标识（search_knowledge 命中里的 source 字段）"],
+    ) -> Annotated[CallToolResult, DocResolveResult]:
+        """把检索命中的 source 解析为文档注册表标识（doc_id + 最新版本）。
+
+        写入条目的 source.document 前先用它拿 doc_id/version；文档更新后
+        list_document_versions 可对照最新版本判断来源是否需要复核。
+        """
+        svc: AppService = ctx.request_context.lifespan_context
+        try:
+            result = svc.documents.resolve(source)
+        except EntryServiceError as exc:
+            raise _entry_tool_error(exc) from exc
+        return _entry_result(result)
+
+    @server.tool(structured_output=True)
+    async def list_document_versions(
+        ctx: Context[Any, Any],
+        doc_id: Annotated[str, "文档注册表 doc_id（resolve_document 返回）"],
+    ) -> Annotated[CallToolResult, DocumentVersionList]:
+        """列出文档全部注册版本（版本号/内容哈希/入库快照/时间），不含正文。"""
+        svc: AppService = ctx.request_context.lifespan_context
+        try:
+            result = svc.documents.list_versions(doc_id)
+        except EntryServiceError as exc:
+            raise _entry_tool_error(exc) from exc
+        return _entry_result(result)
+
+    @server.tool(structured_output=True)
+    async def read_document(
+        ctx: Context[Any, Any],
+        doc_id: Annotated[str, "文档注册表 doc_id"],
+        version: Annotated[int, "版本号（正整数）"],
+        offset: Annotated[int, "窗口起点（字符）"] = 0,
+        limit: Annotated[int, "窗口长度（字符，≤8000）"] = 4000,
+    ) -> Annotated[CallToolResult, DocumentWindow]:
+        """按版本回查文档有界原文窗口（旧版本永久可解析）。
+
+        窗口携带 offset/total_length/content_hash（全文哈希，客户端可复算）；
+        确定片段精确 span 后写入 source.document 引用。
+        """
+        svc: AppService = ctx.request_context.lifespan_context
+        try:
+            window: DocumentWindow = svc.documents.read_window(doc_id, version, offset, limit)
+        except EntryServiceError as exc:
+            raise _entry_tool_error(exc) from exc
+        return CallToolResult(
+            content=[_text_payload(window.model_dump())],
+            structured_content=window.model_dump(),
+        )
 
     return server
 

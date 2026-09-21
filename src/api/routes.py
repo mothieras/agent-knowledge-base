@@ -24,6 +24,7 @@ from schema.entry_dto import (
     EntrySearchResult,
     RevisionSummary,
 )
+from schema.doc_dto import DocResolveResult, DocumentVersionList, DocumentWindow
 
 router = APIRouter()
 
@@ -76,6 +77,7 @@ async def health(request: Request):
             "status": "ready",
             "generation": "configured" if svc.llm_configured else "disabled",
             "entries": "ready" if svc.entries is not None else "unavailable",
+            "documents": "ready" if svc.documents is not None else "unavailable",
         }
     raise HTTPException(status_code=503, detail={"code": "snapshot_unavailable", "message": "starting"})
 
@@ -282,3 +284,37 @@ async def entry_lifecycle(entry_id: str, payload: dict, request: Request):
         )
 
     return await _run_entry_write(svc, run)
+
+
+# --- 文档来源回查（D6/PHASE2-T67 §4.4：只读，读写方只有离线 ingest） ---
+
+
+def get_documents_service(request: Request) -> AppService:
+    svc = getattr(request.app.state, "app_service", None)
+    if svc is None or svc.documents is None:
+        raise HTTPException(status_code=503, detail={"code": "doc_store_unavailable", "message": "文档服务未就绪"})
+    return svc
+
+
+@router.get("/documents/resolve", response_model=DocResolveResult,
+            dependencies=[Depends(enforce_bearer)])
+async def resolve_document(source: str, request: Request):
+    svc = get_documents_service(request)
+    return await _run_entry_read(lambda: svc.documents.resolve(source))
+
+
+@router.get("/documents/{doc_id:path}/versions", response_model=DocumentVersionList,
+            dependencies=[Depends(enforce_bearer)])
+async def list_document_versions(doc_id: str, request: Request):
+    svc = get_documents_service(request)
+    return await _run_entry_read(lambda: svc.documents.list_versions(doc_id))
+
+
+@router.get("/documents/{doc_id:path}/versions/{version}", response_model=DocumentWindow,
+            dependencies=[Depends(enforce_bearer)])
+async def read_document(doc_id: str, version: int, request: Request,
+                        offset: int = 0, limit: int = 4000):
+    svc = get_documents_service(request)
+    return await _run_entry_read(
+        lambda: svc.documents.read_window(doc_id, version, offset, limit)
+    )

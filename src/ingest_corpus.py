@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -120,6 +121,44 @@ def _source_sha256(paths, source_names) -> dict[str, str]:
     }
 
 
+def _register_documents(results, paths, source_names, index_id) -> None:
+    """文档注册表（D6/PHASE2-T67 §4.3）：入库 ok 的文档注册版本化规范化文本。
+
+    注册不改变快照输入（index_id 不变）；同内容幂等跳过，内容变化 version+1。
+    """
+    from db.doc_store import DocStore
+
+    store = DocStore(config.DOCS_DB_PATH)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    repo_root = REPO_ROOT
+    registered = skipped = 0
+    for result in results:
+        if result["status"] != "ok":
+            continue
+        source = result["source"]
+        # 规范化产物命名与 DocumentManager 同源：source 以 __ 替换扁平化
+        md_path = Path(config.MARKDOWN_DIR) / f"{source.replace('/', '__')}.md"
+        if not md_path.exists():
+            print(f"  [register skip] 产物缺失: {md_path}", file=sys.stderr)
+            continue
+        content = md_path.read_text(encoding="utf-8")
+        origin_file = None
+        for p in paths:
+            if source_names[p] == source:
+                origin_file = Path(p).relative_to(repo_root).as_posix()
+                break
+        outcome = store.register(
+            doc_id=source, name=source.rsplit("/", 1)[-1], content=content,
+            origin_file=origin_file, index_id=index_id, created_at=now,
+        )
+        if outcome["new_version"]:
+            registered += 1
+        else:
+            skipped += 1
+    store.close()
+    print(f"[docs] 注册 {registered} 个新版本，{skipped} 篇内容未变（幂等跳过）")
+
+
 def main():
     from db.snapshot import build_manifest
 
@@ -182,6 +221,7 @@ def main():
     manifest_path = Path(config.QDRANT_DB_PATH) / "snapshot_manifest.json"
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[snapshot] index_id={manifest['index_id']} → {manifest_path}")
+    _register_documents(results, paths, source_names, manifest["index_id"])
     return 0
 
 

@@ -31,11 +31,12 @@ class AppService:
     """
 
     def __init__(self, *, snapshot: Snapshot, retrieval_service: RetrievalService,
-                 generation=None, entry_service=None):
+                 generation=None, entry_service=None, doc_service=None):
         self.snapshot = snapshot
         self.retrieval = retrieval_service
         self.generation = generation
         self.entries = entry_service
+        self.documents = doc_service
         self._slots = asyncio.Semaphore(MAX_CONCURRENT_QUERIES)
 
     @property
@@ -121,10 +122,15 @@ def build_app_service(*, snapshot_path=None, vector_db=None, parent_store=None,
     retrieval_service = RetrievalService(retriever, evidence, source_uris=source_uris)
 
     # 条目服务（PHASE2 §6.1/6.2）：独立 SQLite 文件，不触碰 Qdrant/语料快照
+    from db.doc_store import DocStore
     from db.entry_store import EntryStore
+    from core.doc_service import DocService
     from core.entry_service import EntryService
 
-    entry_service = EntryService(EntryStore(config.ENTRIES_DB_PATH))
+    # 文档注册表（D6/PHASE2-T67 §4.3）：source.document 机械校验与来源回查
+    doc_store = DocStore(config.DOCS_DB_PATH)
+    doc_service = DocService(doc_store)
+    entry_service = EntryService(EntryStore(config.ENTRIES_DB_PATH), doc_store=doc_store)
 
     generation = None
     if build_generation and config.LLM_API_KEY:
@@ -144,4 +150,5 @@ def build_app_service(*, snapshot_path=None, vector_db=None, parent_store=None,
         generation = AnswerService(llm, retriever, evidence, source_uris)
 
     return AppService(snapshot=snapshot, retrieval_service=retrieval_service,
-                      generation=generation, entry_service=entry_service)
+                      generation=generation, entry_service=entry_service,
+                      doc_service=doc_service)

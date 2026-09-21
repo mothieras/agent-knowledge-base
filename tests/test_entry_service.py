@@ -440,14 +440,17 @@ def test_fts_rows_maintained_in_transaction(svc, store):
     from db.entry_store import default_tokenize
 
     e = make_entry(svc, body="hybrid retrieval 混合检索")
-    rowid = store._entry_rowid(e.id)
     tokens = store._conn.execute(
-        "SELECT tokens FROM entries_fts WHERE rowid = ?", (rowid,)
-    ).fetchone()[0]
-    assert tokens == default_tokenize("hybrid retrieval 混合检索")  # 入库与查询同分词器
+        "SELECT f.tokens FROM entry_chunks_fts f"
+        " JOIN entry_chunks c ON c.rowid = f.rowid WHERE c.entry_id = ?",
+        (e.id,),
+    ).fetchall()
+    assert [t[0] for t in tokens] == [default_tokenize("hybrid retrieval 混合检索")]  # 入库与查询同分词器
 
     svc.revise(e.id, expected_revision=1, author="a", body="new body")
     rows = store._conn.execute(
-        "SELECT tokens FROM entries_fts WHERE rowid = ?", (rowid,)
+        "SELECT f.tokens FROM entry_chunks_fts f"
+        " JOIN entry_chunks c ON c.rowid = f.rowid WHERE c.entry_id = ?",
+        (e.id,),
     ).fetchall()
-    assert len(rows) == 1 and rows[0][0] == "new body"
+    assert [t[0] for t in rows] == ["new body"]

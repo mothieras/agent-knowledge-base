@@ -7,12 +7,19 @@ _BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 # 钉到项目内稳定路径；显式设置过则尊重外部值
 os.environ.setdefault("FASTEMBED_CACHE_PATH", os.path.join(_BASE_DIR, ".fastembed_cache"))
 
-MARKDOWN_DIR = os.path.join(_BASE_DIR, "markdown_docs")
+MARKDOWN_DIR = os.environ.get("MARKDOWN_DIR", os.path.join(_BASE_DIR, "markdown_docs"))
 # 数据目录支持环境变量覆盖（规模实测/容器挂载用独立快照，不污染质量索引）
 PARENT_STORE_PATH = os.environ.get("PARENT_STORE_PATH", os.path.join(_BASE_DIR, "parent_store"))
 QDRANT_DB_PATH = os.environ.get("QDRANT_DB_PATH", os.path.join(_BASE_DIR, "qdrant_db"))
 # 条目库：单 SQLite 文件（WAL），运行时数据不进版本库（PHASE2 §6.2）
 ENTRIES_DB_PATH = os.environ.get("ENTRIES_DB_PATH", os.path.join(_BASE_DIR, "entries.db"))
+# 文档注册表：版本化规范化文本（D6/PHASE2-T67 §4.3），独立于条目库
+DOCS_DB_PATH = os.environ.get("DOCS_DB_PATH", os.path.join(_BASE_DIR, "docs.db"))
+
+# --- Entry Chunking (D6/PHASE2-T67 §4.5) ---
+ENTRY_CHUNK_THRESHOLD = 4000   # body 超过该字符数才分块；短条目单块=全文
+ENTRY_CHUNK_SIZE = 2000
+ENTRY_CHUNK_OVERLAP = 200
 
 # --- Qdrant Configuration ---
 CHILD_COLLECTION = "document_child_chunks"
