@@ -1,0 +1,10 @@
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "<your-token>",
+    "ANTHROPIC_BASE_URL": "<your-anthropic-compatible-endpoint>",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "<model>",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+  "model": "opus",
+  "hooks": {}
+}
