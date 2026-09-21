@@ -10,7 +10,7 @@
 
 > **状态：活跃原型，面向本地部署。** 鉴权可选（Bearer）；未内置限流与 TLS，不建议直接暴露公网。
 
-后续产品方向与建设顺序见 [PRODUCT 总纲](PRODUCT.md) 与 [ROADMAP 路线图](ROADMAP.md)：先优化现有文档入库，再建设单用户、多 Agent 共享的 Memory / Knowledge 服务。条目服务核心（写入、协作修订、无模型全文检索、生命周期与有效期）已交付并接入 HTTP/MCP，容量/并发/重启实测达标；真实 Agent 接入验证仍在阶段 2 任务序列中。
+后续产品方向与建设顺序见 [PRODUCT 总纲](PRODUCT.md) 与 [ROADMAP 路线图](ROADMAP.md)：先优化现有文档入库，再建设单用户、多 Agent 共享的 Memory / Knowledge 服务。条目服务（写入、协作修订、无模型全文检索、生命周期与有效期）与文档派生条目（来源引用、版本化回查、长条目分块）已交付并接入 HTTP/MCP；两个真实 Agent 客户端（Pi 与 Claude Code）的接入验证与价值对照实验已完成（报告见 [agents-2026-09-21](eval/reports/agents-2026-09-21.md)），阶段 2 全部交付。
 
 该方向与 Codex、Claude Code 等调用方的原生记忆配合使用，重点补足不同 Agent 之间的内容共享、外部资料与积累条目的关联，以及共享内容的持续修订与证据回查。调用方通过公开工具接入，无需服务接管其内部记忆文件；这些目标流程的实际收益仍待验证。
 
@@ -32,7 +32,8 @@ LLM Agent 的答案质量取决于它引用的事实是否可信。与其让模�
 - **单次 decision 协议**：`answered / clarification_required / refused` 皆为终态；无会话、无跨请求状态
 - **双模式问答**：`rag` 单图（快、便宜）与 `agentic` 双图（改写/拆解/并行补查，共享请求级预算：3 子问题 / 8 工具调用 / 10 迭代），同 index/模型同场对照见 Evaluation
 - **MCP 接入**：Streamable HTTP 端点 + Bearer 鉴权，Agent 的工具即知识库
-- **共享条目服务（Memory/Knowledge）**：Agent 跨会话/跨客户端写入、修订、搜索与回查持久条目；全文搜索（SQLite FTS5 + jieba 预分词 + bm25，无模型）按全局/单项目/多项目/全部项目范围过滤；原子版本检查（409 附当前条目）、幂等写入、软生命周期（archive/delete/restore）、查询时到期判定、全量修订历史。接入指南见 [docs/ENTRY_TOOL_GUIDE.md](docs/ENTRY_TOOL_GUIDE.md)
+- **共享条目服务（Memory/Knowledge）**：Agent 跨会话/跨客户端写入、修订、搜索与回查持久条目；全文搜索（SQLite FTS5 + jieba 预分词 + bm25，无模型）按全局/单项目/多项目/全部项目范围过滤；原子版本检查（409 附当前条目）、幂等写入、软生命周期（archive/delete/restore）、查询时到期判定、全量修订历史；长条目按分块检索（超阈值自动分块、命中返回匹配片段与 span、条目身份不变）。接入指南见 [docs/ENTRY_TOOL_GUIDE.md](docs/ENTRY_TOOL_GUIDE.md)
+- **文档派生条目与来源回查**：条目 `source.document` 引用文档注册表的版本化规范化文本（`doc_id`/`version`/精确 span），写入时机械校验引用存在；文档更新注册新版本、旧版本与旧引用永久可解析；`resolve_document` / `list_document_versions` / `read_document` 经 HTTP/MCP 回查原文窗口（content_hash 可复算）
 - **manifest 语料治理**：逐文件登记来源、许可、SHA-256；同步采用镜像语义清理清单外残留，语料可整体替换
 - **版本元数据全链路**：version / effective_date / expired_date / priority 从 manifest 流经 chunk → 检索 → API → eval
 - **可复现评测**：30 题 golden set（6 类题型）、40 题检索挑战集、规模与并发实测；报告绑定 commit / index / 模型 / 参数
@@ -81,6 +82,7 @@ docker run -d --name agent-kb -p 8000:8000 \
   -v "$PWD/qdrant_db:/app/qdrant_db" \
   -v "$PWD/parent_store:/app/parent_store" \
   -v "$PWD/entries.db:/app/entries.db" \
+  -v "$PWD/docs.db:/app/docs.db" \
   -v "$HOME/.cache/huggingface:/app/.cache/huggingface" \
   -v "$PWD/.fastembed_cache:/app/.cache/fastembed" \
   -e HF_HUB_OFFLINE=1 \
@@ -88,7 +90,7 @@ docker run -d --name agent-kb -p 8000:8000 \
   agent-kb-demo
 ```
 
-- 入口脚本发现无索引快照时先入库再启动（需联网下载嵌入模型，建议挂载既有索引/缓存卷）；镜像约 1.7 GB（CPU-only torch，不含 CUDA）；`entries.db` 挂载卷保证条目数据跨容器重建保留
+- 入口脚本发现无索引快照时先入库再启动（需联网下载嵌入模型，建议挂载既有索引/缓存卷）；镜像约 1.7 GB（CPU-only torch，不含 CUDA）；`entries.db`/`docs.db` 挂载卷保证条目与文档注册表跨容器重建保留
 - `DEMO_API_TOKEN` 设置后 HTTP 与 MCP 统一要求 `Authorization: Bearer <token>`（无/错凭据 401）；不设置则本地免鉴权
 
 ## MCP Integration
@@ -106,6 +108,9 @@ MCP 端点（Streamable HTTP）：`http://127.0.0.1:8000/mcp`，与 HTTP 共用 
 | `entry_lifecycle` | archive / unarchive / delete / restore 软生命周期 |
 | `list_entry_revisions` | 修订历史列表 |
 | `search_entries` | 条目全文搜索（范围/类型过滤；未指定范围仅查全局） |
+| `resolve_document` | 检索命中的 source → 文档注册表 doc_id/最新版本 |
+| `list_document_versions` | 文档全部注册版本（版本号/内容哈希/快照/时间） |
+| `read_document` | 按版本回查文档有界原文窗口（旧版本永久可解析） |
 
 ```json
 {
@@ -118,7 +123,9 @@ MCP 端点（Streamable HTTP）：`http://127.0.0.1:8000/mcp`，与 HTTP 共用 
 }
 ```
 
-实测（Pi 0.85.1 + pi-mcp-adapter 2.32.1 ↔ 服务端 MCP SDK 2.1.1）：工具发现 → Bearer 鉴权 → search 命中 → get_context 回查 → **Pi 用自己的模型基于证据作答并引用 source**，五步全绿；`ask_knowledge` decision=answered。工具的文本通道与 structuredContent 同载荷，只渲染文本的 MCP 客户端也能拿到完整结构化结果。冒烟脚本：`python src/smoke_mcp.py --url http://127.0.0.1:8000/mcp [--token <token>]`（含条目工具 save→revise→冲突通道→lifecycle→历史全链路）。
+实测（Pi 0.86.0 + pi-mcp-adapter 2.34.0 ↔ 服务端 MCP SDK 2.1.1）：工具发现 → Bearer 鉴权 → search 命中 → get_context 回查 → **Pi 用自己的模型基于证据作答并引用 source**，五步全绿；`ask_knowledge` decision=answered。工具的文本通道与 structuredContent 同载荷，只渲染文本的 MCP 客户端也能拿到完整结构化结果。冒烟脚本：`python src/smoke_mcp.py --url http://127.0.0.1:8000/mcp [--token <token>]`（含条目工具 save→revise→冲突通道→lifecycle→历史全链路）。
+
+两客户端真实 Agent 验证（Pi 0.86.0 + Claude Code 2.1.268）：Pi 记录（自主 + 用户显式，global/单项目/多项目 × 双类型）→ Claude Code 跨客户端检索复用、故意制造 409 后按冲突体重试修订、历史回查 → 两客户端同修订竞争单胜一败 → 服务重启数据保留，五场景全过；价值对照（原生记忆 vs 原生记忆+服务）如实报告，未预设收益。见 [agents-2026-09-21](eval/reports/agents-2026-09-21.md)。
 
 ## Evaluation
 
@@ -149,7 +156,9 @@ MCP 端点（Streamable HTTP）：`http://127.0.0.1:8000/mcp`，与 HTTP 共用 
 
 **规模与并发**：100 文档 / 12,098 块合成快照，3 并发 126/126 有效查询，0 错误 0 busy；P50/P95 与峰值资源见[规模实测报告](eval/reports/scale-2026-09-10.md)。
 
-**条目服务**：检索挑战集三门槛全过（recall@5=mrr@10=1.0，契约 sha256 冻结）见[挑战集报告](eval/reports/entries-challenge-2026-09-18.md)；容量/并发/重启实测（1 万 active 条目 / 10 万修订、3 并发写 0 busy、搜索 P95 7.7ms 对 500ms 门槛、SIGTERM 重启数据保留、禁生成模型核心流程全链）见[容量实测报告](eval/reports/entries-capacity-2026-09-18.md)。
+**条目服务**：检索挑战集三门槛全过（recall@5=mrr@10=1.0，契约 sha256 冻结）见[挑战集报告](eval/reports/entries-challenge-2026-09-18.md)；容量/并发/重启实测（1 万 active 条目 / 10 万修订、3 并发写 0 busy、搜索 P95 7.7ms 对 500ms 门槛、SIGTERM 重启数据保留、禁生成模型核心流程全链）见[容量实测报告](eval/reports/entries-capacity-2026-09-18.md)。分块检索改动后挑战集三门槛回归通过（`eval/reports/entries-challenge-2026-09-21.md`）。
+
+**真实 Agent 验证（T6/T7）**：Pi 与 Claude Code 两客户端五场景全过、文档派生条目端到端（提取 → 来源引用 → 回查 → 文档更新后旧引用仍指原修订）、价值对照两臂如实报告，见 [agents-2026-09-21](eval/reports/agents-2026-09-21.md)。
 
 运行评测：
 
@@ -183,27 +192,28 @@ L0  Qdrant hybrid retrieval + parent store + corpus · SQLite 条目库（FTS5 +
 - **单次 decision 协议**：三种 decision 皆为终态，单次请求语义贯穿 HTTP / SSE / MCP，服务无会话状态
 - **引用机械校验**（`rag_agent/validation.py`）：evidence_id 必属本次实际取得的证据集合，quote 必须是证据原文精确子串，span 由 quote 位置推导并绑定快照；失败在预算内修复一次，仍失败返回 `result_validation_failed`，不伪造引用、不冒充正常拒答
 - **类型化 `RetrievalHit` 契约**（`db/retrieval.py`）：命中作为对象流经 AgentState → events → eval，全程无字符串解析；`Retriever` Protocol 由 `QdrantRetriever`（prod）与 `InMemoryRetriever`（test）两个适配器坐实
-- **条目服务**（`db/entry_store.py` + `core/entry_service.py`）：SQLite WAL 单事务并发纪律（`expected_revision` 409 附当前条目）、FTS5 + jieba 预分词无模型全文搜索、软生命周期与查询时到期判定
+- **条目服务**（`db/entry_store.py` + `core/entry_service.py`）：SQLite WAL 单事务并发纪律（`expected_revision` 409 附当前条目）、FTS5 + jieba 预分词无模型全文搜索、软生命周期与查询时到期判定；长条目分块检索（阈值 4000 字符，chunks + FTS，matched 加性字段）
+- **文档注册表**（`db/doc_store.py` + `core/doc_service.py`）：离线 ingest 注册版本化规范化文本（内容 hash 变化才 +1，旧版本永久保留）；`source.document` 写入时机械校验引用存在与 span 合法；来源回查窗口 content_hash 可复算
 - **manifest 语料治理**：每篇文档登记 `source_url` / `sha256` / `license` / `topic` / 版本，同步采用镜像语义清理清单外残留
 
 ```text
 src/
   api/             FastAPI 路由、SSE 序列化、MCP 工具与鉴权
   client/          HTTP/SSE 客户端
-  core/            AppService composition、检索/问答/条目服务、预算与 usage
-  db/              Qdrant、parent store、快照、证据存储与 SQLite 条目库
+  core/            AppService composition、检索/问答/条目/文档服务、预算与 usage
+  db/              Qdrant、parent store、快照、证据存储、SQLite 条目库与文档注册表
   rag_agent/       rag 单图、agentic 双图、节点、引用校验
   schema/          HTTP/MCP 共用 DTO 与 SSE event schemas
   ui/              Gradio 薄客户端
 data/              受治理示例语料、manifest 与版本 fixture
-eval/              golden set、挑战集、metrics、runner 和 reports
-tests/             API/schema/graph/validation/entry 测试
+eval/              golden set、挑战集、metrics、runner、Agent 验证材料与 reports
+tests/             API/schema/graph/validation/entry/doc 测试
 docs/              架构：分层依赖规则与领域词汇（ARCHITECTURE.md）、条目接入指南（ENTRY_TOOL_GUIDE.md）
 ```
 
 分层规则与领域词汇详见 [ARCHITECTURE](docs/ARCHITECTURE.md)。
 
-测试：`python -m pytest tests/`（本地实测 213 passed / 0 skipped，含 4 项真实索引集成测试；stub 隔离真实 LLM 与 Qdrant，覆盖 schemas、decision 协议、引用校验、跨请求状态隔离、检索路径与 chunker span、fixture 静态契约、ingest 样例集 Level A 管道验证与入库终态分类、条目存储/契约/搜索/生命周期/到期与并发；无本地索引时 4 项集成测试自动跳过）。CI 在 push/PR 时执行 compile 检查 + 全量 pytest。
+测试：`python -m pytest tests/`（本地实测 249 passed / 0 skipped，含 4 项真实索引集成测试；stub 隔离真实 LLM 与 Qdrant，覆盖 schemas、decision 协议、引用校验、跨请求状态隔离、检索路径与 chunker span、fixture 静态契约、ingest 样例集 Level A 管道验证与入库终态分类、条目存储/契约/搜索/生命周期/到期与并发、文档注册表/source.document 校验/来源回查/长条目分块；无本地索引时 4 项集成测试自动跳过）。CI 在 push/PR 时执行 compile 检查 + 全量 pytest。
 
 ## API
 
@@ -222,12 +232,16 @@ docs/              架构：分层依赖规则与领域词汇（ARCHITECTURE.md�
 | `GET` | `/entries/{id}/revisions` | 修订历史列表 |
 | `GET` | `/entries/{id}/revisions/{n}` | 指定修订全量快照 |
 | `POST` | `/entries/{id}/lifecycle` | archive / unarchive / delete / restore |
+| `GET` | `/documents/resolve?source=` | source → doc_id/最新版本（文档注册表） |
+| `GET` | `/documents/{doc_id}/versions` | 文档版本列表 |
+| `GET` | `/documents/{doc_id}/versions/{version}` | 按版本回查有界原文窗口（`offset`/`limit`） |
 
 条目写操作复用并发槽纪律（busy 不排队 → 429）；错误统一 `{code, message}`：
-`invalid_request` 400 · `invalid_project` 400 · `not_found` 404 ·
-`revision_conflict` 409（附 `current`）· `idempotency_conflict` 409 ·
+`invalid_request` 400 · `invalid_project` 400 · `invalid_source` 400 ·
+`not_found` 404 · `revision_conflict` 409（附 `current`）· `idempotency_conflict` 409 ·
 `entry_deleted` 409 · `invalid_transition` 409 · `busy` 429。条目库为独立
-SQLite 文件（`ENTRIES_DB_PATH`，默认 `entries.db`，WAL）。
+SQLite 文件（`ENTRIES_DB_PATH`，默认 `entries.db`，WAL）；文档注册表为独立
+SQLite（`DOCS_DB_PATH`，默认 `docs.db`），离线 ingest 注册版本化规范化文本。
 
 问答结果统一为单次 decision 协议：
 
@@ -253,13 +267,13 @@ usage = input/output tokens + estimated cost + model calls
 
 ## Background & Attribution
 
-本项目脱胎于开源 LangGraph 教学项目 [agentic-rag-for-dummies](https://github.com/GiovanniPasq/agentic-rag-for-dummies)，不把"重写框架"当目标，而是模拟更常见的工程任务：接手一个可运行的开源底座，把它改造成能够测量、能够通过 API 集成的知识库服务。如今两者已是两套系统：底座是 40 文件的教学 demo，本仓库共 197 个受版本控制文件（代码/评测/文档 144 个，受治理语料 53 个；逐项对照见下表）。
+本项目脱胎于开源 LangGraph 教学项目 [agentic-rag-for-dummies](https://github.com/GiovanniPasq/agentic-rag-for-dummies)，不把"重写框架"当目标，而是模拟更常见的工程任务：接手一个可运行的开源底座，把它改造成能够测量、能够通过 API 集成的知识库服务。如今两者已是两套系统：底座是 40 文件的教学 demo，本仓库共 241 个受版本控制文件（代码/评测/文档 188 个，受治理语料 53 个；逐项对照见下表）。
 
 | 领域 | 上游底座 | 本项目的增量 |
 |---|---|---|
 | Agent 编排 | LangGraph 主图/子图、查询改写、HITL 澄清、并行子问题、上下文压缩 | DeepSeek JSON mode 适配；单次化：固定 RAG 单图 + 双图单次 decision 协议、共享请求预算、引用机械校验与一次修复 |
 | 检索 | 父子分块、Qdrant dense + sparse hybrid retrieval、文件型 parent store | 示例中文 RAG 语料、固定 revision 与哈希校验、来源 metadata、检索 recorder 与分维度评测 |
-| 应用入口 | Gradio 教学应用 | FastAPI `/search` `/evidence` `/invoke` `/stream` `/entries`、MCP 检索+问答+条目工具、独立 HTTP/SSE client；Gradio 改为薄客户端 |
+| 应用入口 | Gradio 教学应用 | FastAPI `/search` `/evidence` `/invoke` `/stream` `/entries` `/documents`、MCP 检索+问答+条目+文档来源工具、独立 HTTP/SSE client；Gradio 改为薄客户端 |
 | 评测 | — | 30 条领域 golden set、40 题检索挑战集、自动评测 runner、基线报告与 badcase 信号 |
 | 可运行性 | 本地教学项目 | 环境变量驱动的 DeepSeek 配置、生成模型可选的检索服务、smoke script、API/schema/graph 测试 |
 
